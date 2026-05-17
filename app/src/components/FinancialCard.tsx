@@ -31,6 +31,15 @@ export default function FinancialCard({ candidateId, pipeline, accentColor }: Fi
     }
   };
 
+  const handleNetPayableSave = (val: string) => {
+    const num = parseFloat(val.replace(/[^0-9.-]/g, ''));
+    if (!isNaN(num) && num >= 0) {
+      const adjustedBaseFee = num - calc.totalAdjustments;
+      updateFinancialPipeline(candidateId, pipeline.pipelineType, { baseFee: adjustedBaseFee });
+      showToast('Net payable updated');
+    }
+  };
+
   const handlePaidToDateSave = (val: string) => {
     const num = parseFloat(val.replace(/[^0-9.-]/g, ''));
     if (!isNaN(num)) {
@@ -78,10 +87,14 @@ export default function FinancialCard({ candidateId, pipeline, accentColor }: Fi
           initial={{ scale: 1.03 }}
           animate={{ scale: 1 }}
           transition={{ duration: 0.2 }}
-          className="data-figure mt-2"
+          className="mt-2"
           style={{ color: accentColor }}
         >
-          {formatCurrency(calc.netPayable)}
+          <InlinePencilEditor
+            value={formatCurrency(calc.netPayable)}
+            onSave={handleNetPayableSave}
+            className="data-figure"
+          />
         </motion.div>
       </div>
 
@@ -179,14 +192,18 @@ export default function FinancialCard({ candidateId, pipeline, accentColor }: Fi
       <div className="space-y-3">
         <div className="flex justify-between items-center">
           <span className="font-sans text-sm text-cc-text-mid">Net Payable</span>
-          <motion.span
+          <motion.div
             key={calc.netPayable}
             initial={{ opacity: 0.5 }}
             animate={{ opacity: 1 }}
-            className="data-figure text-cc-gold"
+            className="text-cc-gold"
           >
-            {formatCurrency(calc.netPayable)}
-          </motion.span>
+            <InlinePencilEditor
+              value={formatCurrency(calc.netPayable)}
+              onSave={handleNetPayableSave}
+              className="data-figure"
+            />
+          </motion.div>
         </div>
         <div className="flex justify-between items-center">
           <span className="font-sans text-sm text-cc-text-mid">Paid to Date</span>

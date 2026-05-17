@@ -36,6 +36,12 @@ interface AppState {
 
 const now = new Date();
 const minsAgo = (m: number) => new Date(now.getTime() - m * 60000).toISOString();
+const createDefaultFinancials = (): Candidate['financials'] => [
+  { pipelineType: 'registration', baseFee: 0, adjustments: [], paidToDate: 0 },
+  { pipelineType: 'course', baseFee: 30000, adjustments: [], paidToDate: 0 },
+  { pipelineType: 'document', baseFee: 25000, adjustments: [], paidToDate: 0 },
+  { pipelineType: 'placement', baseFee: 100000, adjustments: [], paidToDate: 0 },
+];
 
 const mockCandidates: Candidate[] = [
   {
@@ -54,12 +60,7 @@ const mockCandidates: Candidate[] = [
     pastEmployment: ['TCS', 'Infosys'],
     documentsReceived: { offerLetter: true, appraisals: true, payslips: false, relievingLetter: true, counterOffer: false },
     documentsApplied: { offerLetter: true, appraisals: false, payslips: true, relievingLetter: false, counterOffer: false },
-    financials: [
-      { pipelineType: 'registration', baseFee: 5000, adjustments: [{ id: 'a1', amount: -500, label: 'Early Bird', reason: 'Promotional discount', createdAt: '2025-01-10', userStamp: 'HR-A' }], paidToDate: 4500 },
-      { pipelineType: 'course', baseFee: 45000, adjustments: [{ id: 'a2', amount: -2000, label: 'Corporate Waiver', reason: 'Branch Manager approved corporate waiver', createdAt: '2025-01-10', userStamp: 'HR-A' }], paidToDate: 25000 },
-      { pipelineType: 'document', baseFee: 3000, adjustments: [], paidToDate: 3000 },
-      { pipelineType: 'placement', baseFee: 15000, adjustments: [], paidToDate: 0 },
-    ],
+    financials: createDefaultFinancials(),
   },
   {
     id: 'c2',
@@ -77,12 +78,7 @@ const mockCandidates: Candidate[] = [
     pastEmployment: ['Cognizant', 'Wipro'],
     documentsReceived: { offerLetter: true, appraisals: false, payslips: true, relievingLetter: false, counterOffer: false },
     documentsApplied: { offerLetter: true, appraisals: true, payslips: true, relievingLetter: true, counterOffer: false },
-    financials: [
-      { pipelineType: 'registration', baseFee: 5000, adjustments: [], paidToDate: 5000 },
-      { pipelineType: 'course', baseFee: 55000, adjustments: [{ id: 'a3', amount: -3000, label: 'Scholarship', reason: 'Merit scholarship awarded', createdAt: '2025-02-05', userStamp: 'HR-B' }], paidToDate: 35000 },
-      { pipelineType: 'document', baseFee: 3000, adjustments: [], paidToDate: 1500 },
-      { pipelineType: 'placement', baseFee: 20000, adjustments: [], paidToDate: 0 },
-    ],
+    financials: createDefaultFinancials(),
   },
   {
     id: 'c3',
@@ -101,12 +97,7 @@ const mockCandidates: Candidate[] = [
     pastEmployment: ['HCL', 'Tech Mahindra', 'Accenture'],
     documentsReceived: { offerLetter: true, appraisals: true, payslips: true, relievingLetter: true, counterOffer: true },
     documentsApplied: { offerLetter: true, appraisals: true, payslips: true, relievingLetter: true, counterOffer: true },
-    financials: [
-      { pipelineType: 'registration', baseFee: 5000, adjustments: [], paidToDate: 5000 },
-      { pipelineType: 'course', baseFee: 60000, adjustments: [{ id: 'a4', amount: -5000, label: 'Corporate Discount', reason: 'Bulk enrollment discount', createdAt: '2024-12-01', userStamp: 'HR-A' }], paidToDate: 55000 },
-      { pipelineType: 'document', baseFee: 3000, adjustments: [], paidToDate: 3000 },
-      { pipelineType: 'placement', baseFee: 25000, adjustments: [], paidToDate: 12500 },
-    ],
+    financials: createDefaultFinancials(),
   },
   {
     id: 'c4',
@@ -124,12 +115,7 @@ const mockCandidates: Candidate[] = [
     pastEmployment: ['Capgemini'],
     documentsReceived: { offerLetter: false, appraisals: false, payslips: false, relievingLetter: false, counterOffer: false },
     documentsApplied: { offerLetter: true, appraisals: false, payslips: false, relievingLetter: false, counterOffer: false },
-    financials: [
-      { pipelineType: 'registration', baseFee: 5000, adjustments: [], paidToDate: 2500 },
-      { pipelineType: 'course', baseFee: 35000, adjustments: [], paidToDate: 10000 },
-      { pipelineType: 'document', baseFee: 3000, adjustments: [], paidToDate: 0 },
-      { pipelineType: 'placement', baseFee: 15000, adjustments: [], paidToDate: 0 },
-    ],
+    financials: createDefaultFinancials(),
   },
   {
     id: 'c5',
@@ -148,12 +134,7 @@ const mockCandidates: Candidate[] = [
     pastEmployment: ['IBM', 'Deloitte'],
     documentsReceived: { offerLetter: true, appraisals: true, payslips: true, relievingLetter: true, counterOffer: false },
     documentsApplied: { offerLetter: true, appraisals: true, payslips: true, relievingLetter: true, counterOffer: false },
-    financials: [
-      { pipelineType: 'registration', baseFee: 5000, adjustments: [], paidToDate: 5000 },
-      { pipelineType: 'course', baseFee: 45000, adjustments: [{ id: 'a5', amount: -1000, label: 'Referral', reason: 'Referred by existing student', createdAt: '2025-01-20', userStamp: 'HR-A' }], paidToDate: 44000 },
-      { pipelineType: 'document', baseFee: 3000, adjustments: [], paidToDate: 3000 },
-      { pipelineType: 'placement', baseFee: 20000, adjustments: [], paidToDate: 20000 },
-    ],
+    financials: createDefaultFinancials(),
   },
   {
     id: 'c6',
@@ -171,12 +152,7 @@ const mockCandidates: Candidate[] = [
     pastEmployment: [],
     documentsReceived: { offerLetter: false, appraisals: false, payslips: false, relievingLetter: false, counterOffer: false },
     documentsApplied: { offerLetter: false, appraisals: false, payslips: false, relievingLetter: false, counterOffer: false },
-    financials: [
-      { pipelineType: 'registration', baseFee: 5000, adjustments: [], paidToDate: 5000 },
-      { pipelineType: 'course', baseFee: 55000, adjustments: [], paidToDate: 15000 },
-      { pipelineType: 'document', baseFee: 3000, adjustments: [], paidToDate: 0 },
-      { pipelineType: 'placement', baseFee: 18000, adjustments: [], paidToDate: 0 },
-    ],
+    financials: createDefaultFinancials(),
   },
 ];
 

@@ -8,6 +8,7 @@ export default function TopNavigationBar() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [resultsOpen, setResultsOpen] = useState(false);
   const {
     trackedCandidates,
     settings,
@@ -32,6 +33,7 @@ export default function TopNavigationBar() {
     branchFilter !== 'all' ||
     courseFilter !== 'all' ||
     placementFilter !== 'all';
+  const showResults = hasActiveSearch && resultsOpen;
 
   const isActive = (path: string) => location.pathname === path;
   const filterPills = [
@@ -128,7 +130,8 @@ export default function TopNavigationBar() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); setResultsOpen(true); }}
+                onFocus={() => { if (hasActiveSearch) setResultsOpen(true); }}
                 placeholder="Search by Candidate Name, Batch, Email, or Phone..."
                 className="w-full h-16 bg-cc-base-surface border border-cc-gridline rounded pl-14 pr-12 font-sans text-[17px] text-cc-text-high placeholder:text-cc-text-mid focus:outline-none focus:border-cc-warm-primary focus:shadow-[0_0_0_3px_rgba(184,92,61,0.16),0_18px_48px_rgba(0,0,0,0.42)] shadow-[0_16px_44px_rgba(0,0,0,0.34)] transition-all"
               />
@@ -152,7 +155,7 @@ export default function TopNavigationBar() {
                     <button
                       key={filter.id}
                       type="button"
-                      onClick={() => toggleFilter(filter.id)}
+                      onClick={() => { toggleFilter(filter.id); setResultsOpen(true); }}
                       className={`rounded px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.05em] border transition-all ${
                         active
                           ? filter.color === 'green'
@@ -172,7 +175,7 @@ export default function TopNavigationBar() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full lg:w-auto">
                 <select
                   value={branchFilter}
-                  onChange={(e) => setBranchFilter(e.target.value)}
+                  onChange={(e) => { setBranchFilter(e.target.value); setResultsOpen(true); }}
                   className="h-9 bg-cc-base-surface border border-cc-gridline rounded px-2 font-sans text-[12px] text-cc-text-high focus:border-cc-warm-primary focus:outline-none"
                 >
                   <option value="all">All Branches</option>
@@ -182,7 +185,7 @@ export default function TopNavigationBar() {
                 </select>
                 <select
                   value={courseFilter}
-                  onChange={(e) => setCourseFilter(e.target.value)}
+                  onChange={(e) => { setCourseFilter(e.target.value); setResultsOpen(true); }}
                   className="h-9 bg-cc-base-surface border border-cc-gridline rounded px-2 font-sans text-[12px] text-cc-text-high focus:border-cc-warm-primary focus:outline-none"
                 >
                   <option value="all">All Courses</option>
@@ -192,7 +195,7 @@ export default function TopNavigationBar() {
                 </select>
                 <select
                   value={placementFilter}
-                  onChange={(e) => setPlacementFilter(e.target.value)}
+                  onChange={(e) => { setPlacementFilter(e.target.value); setResultsOpen(true); }}
                   className="h-9 bg-cc-base-surface border border-cc-gridline rounded px-2 font-sans text-[12px] text-cc-text-high focus:border-cc-warm-primary focus:outline-none"
                 >
                   <option value="all">All Statuses</option>
@@ -203,7 +206,7 @@ export default function TopNavigationBar() {
             </div>
           </div>
 
-          {hasActiveSearch && (
+          {showResults && (
             <div className="absolute left-0 right-0 top-[calc(100%+8px)] bg-cc-base-deep border border-cc-gridline rounded shadow-[0_22px_70px_rgba(0,0,0,0.46)] max-h-[420px] overflow-y-auto">
               <div className="px-4 py-3 border-b border-cc-gridline flex items-center justify-between">
                 <span className="micro-text text-cc-text-mid">
@@ -226,6 +229,7 @@ export default function TopNavigationBar() {
                       <Link
                         key={candidate.id}
                         to={`/candidate/${candidate.id}`}
+                        onClick={() => setResultsOpen(false)}
                         className="grid gap-2 sm:grid-cols-[1fr_auto] px-4 py-3 hover:bg-cc-base-surface transition-colors"
                       >
                         <div className="min-w-0">

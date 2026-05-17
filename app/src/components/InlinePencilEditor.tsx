@@ -8,6 +8,7 @@ interface InlinePencilEditorProps {
   type?: 'text' | 'select' | 'date';
   options?: string[];
   className?: string;
+  editValue?: string;
 }
 
 export default function InlinePencilEditor({
@@ -16,9 +17,11 @@ export default function InlinePencilEditor({
   type = 'text',
   options = [],
   className = '',
+  editValue: editInitialValue,
 }: InlinePencilEditorProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
+  const initialEditValue = editInitialValue ?? value;
 
   const handleSave = () => {
     if (editValue !== value) {
@@ -28,7 +31,7 @@ export default function InlinePencilEditor({
   };
 
   const handleCancel = () => {
-    setEditValue(value);
+    setEditValue(initialEditValue);
     setIsEditing(false);
   };
 
@@ -90,7 +93,10 @@ export default function InlinePencilEditor({
   return (
     <span
       className={`group inline-flex items-center gap-1 cursor-pointer ${className}`}
-      onClick={() => setIsEditing(true)}
+      onClick={() => {
+        setEditValue(initialEditValue);
+        setIsEditing(true);
+      }}
     >
       <span className="text-cc-text-high">{value || '--'}</span>
       <Pencil

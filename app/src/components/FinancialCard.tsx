@@ -92,6 +92,7 @@ export default function FinancialCard({ candidateId, pipeline, accentColor }: Fi
         >
           <InlinePencilEditor
             value={formatCurrency(calc.netPayable)}
+            editValue={String(calc.netPayable)}
             onSave={handleNetPayableSave}
             className="data-figure"
           />
@@ -104,6 +105,7 @@ export default function FinancialCard({ candidateId, pipeline, accentColor }: Fi
         <div className="mt-2">
           <InlinePencilEditor
             value={formatCurrency(pipeline.baseFee)}
+            editValue={String(pipeline.baseFee)}
             onSave={handleBaseFeeSave}
           />
         </div>
@@ -204,6 +206,7 @@ export default function FinancialCard({ candidateId, pipeline, accentColor }: Fi
           >
             <InlinePencilEditor
               value={formatCurrency(calc.netPayable)}
+              editValue={String(calc.netPayable)}
               onSave={handleNetPayableSave}
               className="data-figure"
             />
@@ -213,6 +216,7 @@ export default function FinancialCard({ candidateId, pipeline, accentColor }: Fi
           <span className="font-sans text-sm text-cc-text-mid">Paid to Date</span>
           <InlinePencilEditor
             value={formatCurrency(pipeline.paidToDate)}
+            editValue={String(pipeline.paidToDate)}
             onSave={handlePaidToDateSave}
           />
         </div>

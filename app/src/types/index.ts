@@ -47,6 +47,7 @@ export interface Candidate {
   fullName: string;
   email: string;
   phone: string;
+  batchName: string;
   dateOfBirth?: string;
   address?: string;
   branch: string;

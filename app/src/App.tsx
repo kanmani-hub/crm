@@ -1,7 +1,6 @@
-import { Routes, Route, useLocation } from 'react-router';
+import { Routes, Route, useLocation, Navigate } from 'react-router';
 import { AnimatePresence, motion } from 'framer-motion';
 import Dashboard from './pages/Dashboard';
-import SearchPage from './pages/Search';
 import CandidateProfile from './pages/CandidateProfile';
 import SettingsPage from './pages/Settings';
 import NewRegistrationForm from './pages/NewRegistrationForm';
@@ -38,7 +37,7 @@ export default function App() {
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<PageTransition><Dashboard /></PageTransition>} />
-        <Route path="/search" element={<PageTransition><SearchPage /></PageTransition>} />
+        <Route path="/search" element={<Navigate to="/" replace />} />
         <Route path="/candidate/:id" element={<PageTransition><CandidateProfile /></PageTransition>} />
         <Route path="/settings" element={<PageTransition><SettingsPage /></PageTransition>} />
         <Route path="*" element={<PageTransition><Dashboard /></PageTransition>} />

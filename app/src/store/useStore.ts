@@ -9,6 +9,9 @@ interface AppState {
   activeProfileId: string | null;
   searchQuery: string;
   activeFilters: string[];
+  branchFilter: string;
+  courseFilter: string;
+  placementFilter: string;
   settings: AppSettings;
   globalEditMode: boolean;
   sidebarOpen: boolean;
@@ -18,6 +21,10 @@ interface AppState {
   // Actions
   setSearchQuery: (q: string) => void;
   toggleFilter: (filter: string) => void;
+  setBranchFilter: (branch: string) => void;
+  setCourseFilter: (course: string) => void;
+  setPlacementFilter: (placement: string) => void;
+  clearSearchQuery: () => void;
   setActiveProfileId: (id: string | null) => void;
   toggleGlobalEdit: () => void;
   setSidebarOpen: (open: boolean) => void;
@@ -49,10 +56,11 @@ const mockCandidates: Candidate[] = [
     fullName: 'Rahul Sharma',
     email: 'rahul.sharma@email.com',
     phone: '+91 98765 43210',
+    batchName: 'Batch 4',
     dateOfBirth: '1995-03-15',
     address: '42, MG Road, Bangalore, Karnataka 560001',
-    branch: 'Main Branch',
-    course: 'Python Full Stack',
+    branch: 'Bangalore',
+    course: 'Full Stack',
     dateOfJoining: '2025-01-10',
     currentStatus: 'active',
     bgvStatus: 'pending',
@@ -67,10 +75,11 @@ const mockCandidates: Candidate[] = [
     fullName: 'Priya Patel',
     email: 'priya.patel@email.com',
     phone: '+91 87654 32109',
+    batchName: 'Batch 5',
     dateOfBirth: '1997-08-22',
     address: '15, Park Street, Mumbai, Maharashtra 400001',
     branch: 'Online',
-    course: 'Data Science',
+    course: 'Python Core',
     dateOfJoining: '2025-02-05',
     currentStatus: 'active',
     bgvStatus: 'in-review',
@@ -85,10 +94,11 @@ const mockCandidates: Candidate[] = [
     fullName: 'Amit Kumar',
     email: 'amit.kumar@email.com',
     phone: '+91 76543 21098',
+    batchName: 'Batch 3',
     dateOfBirth: '1993-11-05',
     address: '78, Salt Lake, Kolkata, West Bengal 700091',
-    branch: 'Branch A',
-    course: 'Machine Learning',
+    branch: 'Chennai',
+    course: 'Python Core',
     dateOfJoining: '2024-12-01',
     currentStatus: 'active',
     bgvStatus: 'cleared',
@@ -104,10 +114,11 @@ const mockCandidates: Candidate[] = [
     fullName: 'Sneha Reddy',
     email: 'sneha.reddy@email.com',
     phone: '+91 65432 10987',
+    batchName: 'Batch 6',
     dateOfBirth: '1996-06-18',
     address: '33, Jubilee Hills, Hyderabad, Telangana 500033',
-    branch: 'Main Branch',
-    course: 'Web Development',
+    branch: 'Bangalore',
+    course: 'Full Stack',
     dateOfJoining: '2025-03-01',
     currentStatus: 'active',
     bgvStatus: 'pending',
@@ -122,10 +133,11 @@ const mockCandidates: Candidate[] = [
     fullName: 'Vikram Iyer',
     email: 'vikram.iyer@email.com',
     phone: '+91 54321 09876',
+    batchName: 'Batch 4',
     dateOfBirth: '1994-01-30',
     address: '91, Anna Nagar, Chennai, Tamil Nadu 600040',
-    branch: 'Branch B',
-    course: 'Python Full Stack',
+    branch: 'Chennai',
+    course: 'Full Stack',
     dateOfJoining: '2025-01-20',
     currentStatus: 'active',
     bgvStatus: 'cleared',
@@ -141,10 +153,11 @@ const mockCandidates: Candidate[] = [
     fullName: 'Neha Gupta',
     email: 'neha.gupta@email.com',
     phone: '+91 43210 98765',
+    batchName: 'Batch 7',
     dateOfBirth: '1998-04-12',
     address: '55, Rajouri Garden, Delhi, 110027',
     branch: 'Online',
-    course: 'Data Science',
+    course: 'Python Core',
     dateOfJoining: '2025-03-10',
     currentStatus: 'active',
     bgvStatus: 'pending',
@@ -215,8 +228,8 @@ const defaultSettings: AppSettings = {
     'leads@branch.com',
     'placements@pythonhr.com',
   ],
-  courses: ['Python Full Stack', 'Data Science', 'Machine Learning', 'Web Development', 'Other'],
-  branches: ['Main Branch', 'Online', 'Branch A', 'Branch B'],
+  courses: ['Python Core', 'Full Stack', 'Data Science', 'Machine Learning', 'Web Development', 'Other'],
+  branches: ['Chennai', 'Bangalore', 'Online'],
   googleSheetLinks: {
     candidateMaster: '',
     registrations: '',
@@ -237,6 +250,9 @@ export const useStore = create<AppState>((set, get) => ({
   activeProfileId: null,
   searchQuery: '',
   activeFilters: [],
+  branchFilter: 'all',
+  courseFilter: 'all',
+  placementFilter: 'all',
   settings: defaultSettings,
   globalEditMode: false,
   sidebarOpen: false,
@@ -244,11 +260,15 @@ export const useStore = create<AppState>((set, get) => ({
   toastType: 'success',
 
   setSearchQuery: (q) => set({ searchQuery: q }),
+  clearSearchQuery: () => set({ searchQuery: '' }),
   toggleFilter: (filter) => set((s) => ({
     activeFilters: s.activeFilters.includes(filter)
       ? s.activeFilters.filter((f) => f !== filter)
       : [...s.activeFilters, filter],
   })),
+  setBranchFilter: (branch) => set({ branchFilter: branch }),
+  setCourseFilter: (course) => set({ courseFilter: course }),
+  setPlacementFilter: (placement) => set({ placementFilter: placement }),
   setActiveProfileId: (id) => set({ activeProfileId: id, sidebarOpen: false }),
   toggleGlobalEdit: () => set((s) => ({ globalEditMode: !s.globalEditMode })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
@@ -287,7 +307,7 @@ export const useStore = create<AppState>((set, get) => ({
   })),
   getCandidateById: (id) => get().candidates.find((c) => c.id === id),
   getFilteredCandidates: () => {
-    const { candidates, searchQuery, activeFilters } = get();
+    const { candidates, trackedCandidates, searchQuery, activeFilters, branchFilter, courseFilter, placementFilter } = get();
     let results = [...candidates];
 
     if (searchQuery) {
@@ -296,12 +316,18 @@ export const useStore = create<AppState>((set, get) => ({
       results = results.filter((c) =>
         c.fullName.toLowerCase().includes(q) ||
         c.email.toLowerCase().includes(q) ||
-        c.phone.replace(/[^\d]/g, '').includes(sanitizedPhone)
+        c.phone.replace(/[^\d]/g, '').includes(sanitizedPhone) ||
+        c.batchName.toLowerCase().includes(q)
       );
     }
 
     if (activeFilters.includes('form-pending')) {
-      results = results.filter((c) => c.trackedStatus === 'form-pending');
+      const pendingIds = new Set(
+        trackedCandidates
+          .filter((tracked) => tracked.status === 'form-pending')
+          .map((tracked) => tracked.candidateId)
+      );
+      results = results.filter((c) => c.trackedStatus === 'form-pending' || pendingIds.has(c.id));
     }
     if (activeFilters.includes('bgv-cleared')) {
       results = results.filter((c) => c.bgvStatus === 'cleared');
@@ -314,6 +340,19 @@ export const useStore = create<AppState>((set, get) => ({
           return pending > 0;
         });
       });
+    }
+
+    if (branchFilter !== 'all') {
+      results = results.filter((c) => c.branch === branchFilter);
+    }
+    if (courseFilter !== 'all') {
+      results = results.filter((c) => c.course === courseFilter);
+    }
+    if (placementFilter === 'placed') {
+      results = results.filter((c) => c.placed);
+    }
+    if (placementFilter === 'training') {
+      results = results.filter((c) => !c.placed);
     }
 
     return results;

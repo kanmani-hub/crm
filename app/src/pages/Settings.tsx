@@ -68,7 +68,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-cc-base-deep pt-14">
+    <div className="min-h-screen bg-cc-base-deep pt-[208px] sm:pt-[172px]">
       <TopNavigationBar />
       <Toast />
 

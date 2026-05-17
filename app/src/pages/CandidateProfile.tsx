@@ -61,12 +61,12 @@ export default function CandidateProfile() {
 
   if (!candidate) {
     return (
-      <div className="min-h-screen bg-cc-base-deep pt-14 flex items-center justify-center">
+      <div className="min-h-screen bg-cc-base-deep pt-[208px] sm:pt-[172px] flex items-center justify-center">
         <TopNavigationBar />
         <div className="text-center">
           <p className="font-sans text-lg text-cc-text-mid">Candidate not found</p>
-          <Link to="/search" className="text-cc-warm-primary hover:underline mt-2 inline-block text-sm">
-            Back to search
+          <Link to="/" className="text-cc-warm-primary hover:underline mt-2 inline-block text-sm">
+            Back to dashboard
           </Link>
         </div>
       </div>
@@ -203,7 +203,7 @@ export default function CandidateProfile() {
   ];
 
   return (
-    <div className="min-h-screen bg-cc-base-deep pt-14">
+    <div className="min-h-screen bg-cc-base-deep pt-[208px] sm:pt-[172px]">
       <TopNavigationBar />
       <Toast />
       <ChangesSidebar />
@@ -243,7 +243,7 @@ export default function CandidateProfile() {
         >
           <Link to="/" className="hover:text-cc-warm-text transition-colors">Dashboard</Link>
           <span className="text-cc-text-low">/</span>
-          <Link to="/search" className="hover:text-cc-warm-text transition-colors">Search</Link>
+          <Link to="/" className="hover:text-cc-warm-text transition-colors">Dashboard</Link>
           <span className="text-cc-text-low">/</span>
           <span className="text-cc-text-high">{candidate.fullName}</span>
         </motion.div>

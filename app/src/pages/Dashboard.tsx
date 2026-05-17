@@ -4,6 +4,7 @@ import { Mail, FileText, Shield, Send, ClipboardList, Clock, Pencil, Check, X, P
 import { useStore } from '@/store/useStore';
 import type { PayloadType, TrackedStatus } from '@/types';
 import TopNavigationBar from '@/components/TopNavigationBar';
+import CandidateSearchPanel from '@/components/CandidateSearchPanel';
 import Toast from '@/components/Toast';
 import ModalWindow from '@/components/ModalWindow';
 import StatusBadge from '@/components/StatusBadge';
@@ -179,7 +180,7 @@ export default function Dashboard() {
     : null;
 
   return (
-    <div className="min-h-screen bg-cc-base-deep pt-[208px] sm:pt-[172px]">
+    <div className="min-h-screen bg-cc-base-deep pt-20">
       <TopNavigationBar />
       <Toast />
 
@@ -286,10 +287,19 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="text-center font-sans text-[13px] text-cc-text-mid mb-10"
+          className="text-center font-sans text-[13px] text-cc-text-mid mb-6"
         >
           Enter an email to begin a workflow
         </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.15 }}
+          className="mb-10"
+        >
+          <CandidateSearchPanel />
+        </motion.div>
 
         {/* Push Panel */}
         <motion.div

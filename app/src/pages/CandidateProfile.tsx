@@ -62,7 +62,7 @@ export default function CandidateProfile() {
 
   if (!candidate) {
     return (
-      <div className="min-h-screen bg-cc-base-deep pt-[208px] sm:pt-[172px] flex items-center justify-center">
+      <div className="min-h-screen bg-cc-base-deep pt-20 flex items-center justify-center">
         <TopNavigationBar />
         <div className="text-center">
           <p className="font-sans text-lg text-cc-text-mid">Candidate not found</p>
@@ -204,7 +204,7 @@ export default function CandidateProfile() {
   ];
 
   return (
-    <div className="min-h-screen bg-cc-base-deep pt-[208px] sm:pt-[172px]">
+    <div className="min-h-screen bg-cc-base-deep pt-20">
       <TopNavigationBar />
       <Toast />
       <ChangesSidebar />

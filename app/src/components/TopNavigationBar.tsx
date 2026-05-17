@@ -74,8 +74,8 @@ export default function TopNavigationBar() {
             title={isSunny ? 'Command Center theme' : 'Sunny Meadows theme'}
           >
             <span
-              className={`absolute top-1 h-6 w-6 rounded-full bg-cc-warm-primary shadow-[0_3px_10px_rgba(0,0,0,0.22)] transition-transform ${
-                isSunny ? 'translate-x-9' : 'translate-x-0'
+              className={`absolute left-1 top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-cc-warm-primary shadow-[0_3px_10px_rgba(0,0,0,0.22)] transition-transform ${
+                isSunny ? 'translate-x-[34px]' : 'translate-x-0'
               }`}
             />
             <span className="relative z-10 flex h-full items-center justify-between px-1">

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, FileText, Shield, Send, ClipboardList, Clock } from 'lucide-react';
+import { Mail, FileText, Shield, Send, ClipboardList, Clock, Plus, Users } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import type { PayloadType, TrackedStatus } from '@/types';
 import TopNavigationBar from '@/components/TopNavigationBar';
@@ -15,8 +15,9 @@ const toggles: { type: PayloadType; label: string; icon: typeof FileText; color:
 ];
 
 export default function Dashboard() {
-  const { trackedCandidates, addTrackedCandidate, updateTrackedStatus, showToast } = useStore();
+  const { trackedCandidates, settings, updateSettings, addTrackedCandidate, updateTrackedStatus, showToast } = useStore();
   const [email, setEmail] = useState('');
+  const [selectedContact, setSelectedContact] = useState('');
   const [selectedToggle, setSelectedToggle] = useState<PayloadType>('new-registration');
   const [isSending, setIsSending] = useState(false);
   const [emailError, setEmailError] = useState('');
@@ -24,6 +25,37 @@ export default function Dashboard() {
   const [reviewCandidate, setReviewCandidate] = useState<string | null>(null);
 
   const validateEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+  const handleSelectContact = (contactEmail: string) => {
+    setSelectedContact(contactEmail);
+    setEmail(contactEmail);
+    setEmailError('');
+  };
+
+  const handleAddContact = () => {
+    const nextEmail = email.trim();
+    if (!nextEmail) {
+      setEmailError('Enter an email to add');
+      return;
+    }
+    if (!validateEmail(nextEmail)) {
+      setEmailError('Please enter a valid email');
+      return;
+    }
+    if (settings.contactEmails.some((contact) => contact.toLowerCase() === nextEmail.toLowerCase())) {
+      setSelectedContact(nextEmail);
+      showToast('Contact already available', 'info');
+      return;
+    }
+
+    updateSettings({
+      ...settings,
+      contactEmails: [...settings.contactEmails, nextEmail],
+    });
+    setSelectedContact(nextEmail);
+    setEmailError('');
+    showToast('Contact email added');
+  };
 
   const handleSend = async () => {
     if (!email.trim()) {
@@ -49,6 +81,7 @@ export default function Dashboard() {
     });
 
     showToast(`Form link dispatched to ${email.trim()}`);
+    setSelectedContact('');
     setEmail('');
     setIsSending(false);
   };
@@ -202,14 +235,70 @@ export default function Dashboard() {
           className="max-w-[800px] mx-auto"
         >
           <div className="bg-cc-base-surface border border-cc-gridline rounded p-5 shadow-inset-glow">
+            {/* Contact Selector */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2">
+                  <Users size={14} className="text-cc-warm-text" />
+                  <span className="section-header">CONTACT EMAIL</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddContact}
+                  disabled={isSending}
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded border border-cc-gridline bg-cc-base-elevated font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-cc-warm-text hover:border-cc-warm-primary disabled:opacity-50 transition-colors"
+                >
+                  <Plus size={13} />
+                  ADD
+                </button>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-[220px_1fr]">
+                <select
+                  value={selectedContact}
+                  onChange={(e) => handleSelectContact(e.target.value)}
+                  disabled={isSending}
+                  className="h-10 bg-cc-base-elevated border border-cc-gridline rounded px-3 font-sans text-[13px] text-cc-text-high focus:border-cc-warm-primary focus:outline-none transition-colors"
+                >
+                  <option value="">Select saved contact</option>
+                  {settings.contactEmails.map((contact) => (
+                    <option key={contact} value={contact}>
+                      {contact}
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex flex-wrap gap-2">
+                  {settings.contactEmails.map((contact) => {
+                    const isActive = email.trim().toLowerCase() === contact.toLowerCase();
+                    return (
+                      <button
+                        key={contact}
+                        type="button"
+                        onClick={() => handleSelectContact(contact)}
+                        disabled={isSending}
+                        className={`max-w-full rounded-sm border px-2.5 py-1 font-mono text-[10px] transition-colors ${
+                          isActive
+                            ? 'border-cc-warm-primary bg-[rgba(184,92,61,0.14)] text-cc-warm-text'
+                            : 'border-[rgba(91,143,191,0.15)] bg-[rgba(91,143,191,0.08)] text-cc-text-mid hover:text-cc-warm-text'
+                        }`}
+                      >
+                        <span className="block truncate">{contact}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
             {/* Email Input */}
             <div className="relative">
               <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-cc-text-mid" />
               <input
                 type="email"
                 value={email}
-                onChange={(e) => { setEmail(e.target.value); setEmailError(''); }}
-                placeholder="Enter candidate email address..."
+                onChange={(e) => { setEmail(e.target.value); setSelectedContact(''); setEmailError(''); }}
+                placeholder="Edit or enter recipient email address..."
                 className={`w-full h-12 bg-cc-base-elevated border rounded pl-11 pr-4 font-sans text-[15px] text-cc-text-high placeholder:text-cc-text-mid focus:outline-none transition-colors ${emailError ? 'border-cc-danger' : 'border-cc-gridline focus:border-cc-warm-primary'}`}
                 onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSend(); }}
                 disabled={isSending}

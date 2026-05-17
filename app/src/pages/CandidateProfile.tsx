@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Plus } from 'lucide-react';
 
 import { useStore } from '@/store/useStore';
 import type { PipelineType, BGVStatus, DocumentStatus } from '@/types';
@@ -20,9 +21,26 @@ const pipelineTabs: { type: PipelineType; label: string; accent: string }[] = [
   { type: 'placement', label: 'PLACEMENT', accent: '#5B8FBF' },
 ];
 
+const paymentTypes: { type: PipelineType; label: string }[] = [
+  { type: 'registration', label: 'Registration Fee' },
+  { type: 'course', label: 'Course Fee' },
+  { type: 'document', label: 'Document Fee' },
+  { type: 'placement', label: 'Placement Payment' },
+];
+
 export default function CandidateProfile() {
   const { id } = useParams<{ id: string }>();
-  const { getCandidateById, updateCandidate, showToast, globalEditMode, toggleGlobalEdit, setActiveProfileId } = useStore();
+  const {
+    getCandidateById,
+    updateCandidate,
+    updateFinancialPipeline,
+    addPaymentRecord,
+    addAuditLog,
+    showToast,
+    globalEditMode,
+    toggleGlobalEdit,
+    setActiveProfileId,
+  } = useStore();
   const candidate = id ? getCandidateById(id) : undefined;
 
   useEffect(() => {
@@ -34,6 +52,12 @@ export default function CandidateProfile() {
   const [newCompany, setNewCompany] = useState('');
   const [bgvConfirmOpen, setBgvConfirmOpen] = useState(false);
   const [pendingBgvValue, setPendingBgvValue] = useState<BGVStatus>('pending');
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentType, setPaymentType] = useState<PipelineType>('registration');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentRef, setPaymentRef] = useState('');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [paymentError, setPaymentError] = useState('');
 
   if (!candidate) {
     return (
@@ -109,6 +133,59 @@ export default function CandidateProfile() {
       documentsApplied: { ...candidate.documentsApplied, [key]: !candidate.documentsApplied[key] },
     });
     showToast('Document updated');
+  };
+
+  const formatCurrency = (amount: number) => `Rs. ${amount.toLocaleString('en-IN')}`;
+
+  const handleSavePayment = () => {
+    const amount = Number(paymentAmount);
+    if (!paymentType) {
+      setPaymentError('Select a payment type');
+      return;
+    }
+    if (!paymentAmount || isNaN(amount) || amount <= 0) {
+      setPaymentError('Enter a valid payment amount');
+      return;
+    }
+
+    const targetPipeline = candidate.financials.find((f) => f.pipelineType === paymentType);
+    if (!targetPipeline) {
+      setPaymentError('Payment bucket not found');
+      return;
+    }
+
+    const timestamp = new Date().toISOString();
+    const typeLabel = paymentTypes.find((type) => type.type === paymentType)?.label || paymentType;
+    updateFinancialPipeline(candidate.id, paymentType, {
+      paidToDate: targetPipeline.paidToDate + amount,
+    });
+    addPaymentRecord({
+      id: `pay_${Date.now()}`,
+      candidateId: candidate.id,
+      pipelineType: paymentType,
+      amount,
+      transactionRef: paymentRef.trim() || undefined,
+      notes: paymentNotes.trim() || undefined,
+      timestamp,
+      userStamp: 'Python HR',
+    });
+    addAuditLog({
+      id: `log_${Date.now()}`,
+      candidateId: candidate.id,
+      logType: 'financial',
+      description: `Python HR logged a payment of ${formatCurrency(amount)} for ${typeLabel}.${paymentRef.trim() ? ` (Ref: ${paymentRef.trim()})` : ''}`,
+      reason: paymentNotes.trim() || undefined,
+      userStamp: 'Python HR',
+      timestamp,
+    });
+
+    setActivePipeline(paymentType);
+    setPaymentAmount('');
+    setPaymentRef('');
+    setPaymentNotes('');
+    setPaymentError('');
+    setShowPaymentForm(false);
+    showToast(`Payment logged for ${typeLabel}`);
   };
 
   const activePipelineData = candidate.financials.find((f) => f.pipelineType === activePipeline);
@@ -328,7 +405,102 @@ export default function CandidateProfile() {
             className="lg:col-span-2"
           >
             <div className="bg-cc-base-surface border border-cc-gridline rounded p-6 shadow-inset-glow sticky top-16">
-              <h2 className="section-header mb-4">FINANCIAL MANAGEMENT</h2>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h2 className="section-header">FINANCIAL MANAGEMENT</h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentType(activePipeline);
+                    setShowPaymentForm((open) => !open);
+                    setPaymentError('');
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded bg-cc-base-elevated border border-cc-gridline px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-cc-warm-text hover:border-cc-warm-primary transition-colors"
+                >
+                  <Plus size={13} />
+                  Add Payment
+                </button>
+              </div>
+
+              <AnimatePresence initial={false}>
+                {showPaymentForm && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0, y: -8 }}
+                    animate={{ opacity: 1, height: 'auto', y: 0 }}
+                    exit={{ opacity: 0, height: 0, y: -8 }}
+                    transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mb-5 rounded border border-[rgba(199,168,76,0.2)] bg-[rgba(201,168,76,0.06)] p-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="micro-text text-cc-text-mid block mb-1">Payment Type</label>
+                          <select
+                            value={paymentType}
+                            onChange={(e) => setPaymentType(e.target.value as PipelineType)}
+                            className="w-full h-9 bg-cc-base-elevated border border-cc-gridline rounded px-2 font-sans text-[13px] text-cc-text-high focus:border-cc-warm-primary focus:outline-none"
+                          >
+                            {paymentTypes.map((type) => (
+                              <option key={type.type} value={type.type}>{type.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="micro-text text-cc-text-mid block mb-1">Amount</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={paymentAmount}
+                            onChange={(e) => { setPaymentAmount(e.target.value); setPaymentError(''); }}
+                            placeholder="0"
+                            className="w-full h-9 bg-cc-base-elevated border border-cc-gridline rounded px-2 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-low focus:border-cc-warm-primary focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-2">
+                        <label className="micro-text text-cc-text-mid block mb-1">Transaction / Ref ID</label>
+                        <input
+                          type="text"
+                          value={paymentRef}
+                          onChange={(e) => setPaymentRef(e.target.value)}
+                          placeholder="TXN12345"
+                          className="w-full h-9 bg-cc-base-elevated border border-cc-gridline rounded px-2 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-low focus:border-cc-warm-primary focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="mt-2">
+                        <label className="micro-text text-cc-text-mid block mb-1">Notes / Remarks</label>
+                        <textarea
+                          value={paymentNotes}
+                          onChange={(e) => setPaymentNotes(e.target.value)}
+                          placeholder="Paid via GPay - Batch 4"
+                          rows={2}
+                          className="w-full bg-cc-base-elevated border border-cc-gridline rounded px-2 py-1.5 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-low focus:border-cc-warm-primary focus:outline-none resize-none"
+                        />
+                      </div>
+
+                      {paymentError && <p className="mt-2 micro-text text-cc-danger">{paymentError}</p>}
+
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleSavePayment}
+                          className="flex-1 h-9 bg-cc-green text-white font-mono text-[10px] font-semibold uppercase tracking-[0.06em] rounded hover:brightness-110 transition-all"
+                        >
+                          Save Payment
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setShowPaymentForm(false); setPaymentError(''); }}
+                          className="h-9 px-3 border border-cc-gridline rounded font-mono text-[10px] uppercase tracking-[0.06em] text-cc-text-mid hover:text-cc-warm-text transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Pipeline Tabs */}
               <div className="flex gap-0.5 border-b border-cc-gridline -mx-6 px-6 mb-5 overflow-x-auto">

@@ -1,9 +1,11 @@
 import { create } from 'zustand';
-import type { Candidate, TrackedCandidate, AppSettings, PipelineType } from '@/types';
+import type { Candidate, TrackedCandidate, AppSettings, PipelineType, AuditLogEntry, PaymentRecord } from '@/types';
 
 interface AppState {
   candidates: Candidate[];
   trackedCandidates: TrackedCandidate[];
+  auditLogs: AuditLogEntry[];
+  paymentRecords: PaymentRecord[];
   activeProfileId: string | null;
   searchQuery: string;
   activeFilters: string[];
@@ -26,6 +28,8 @@ interface AppState {
   updateCandidate: (id: string, updates: Partial<Candidate>) => void;
   updateFinancialPipeline: (candidateId: string, pipelineType: PipelineType, updates: Partial<Candidate['financials'][0]>) => void;
   updateSettings: (settings: AppSettings) => void;
+  addPaymentRecord: (payment: PaymentRecord) => void;
+  addAuditLog: (log: AuditLogEntry) => void;
   getCandidateById: (id: string) => Candidate | undefined;
   getFilteredCandidates: () => Candidate[];
 }
@@ -182,6 +186,51 @@ const mockTracked: TrackedCandidate[] = [
   { candidateId: 'c6', status: 'form-pending', payloadType: 'bgv-form', email: 'neha.gupta@email.com', name: 'Neha Gupta', timestamp: minsAgo(120) },
 ];
 
+const mockLogs: AuditLogEntry[] = [
+  {
+    id: 'l1',
+    candidateId: 'c1',
+    logType: 'structural',
+    description: 'Applied discount: Corporate Waiver (-Rs.2,000)',
+    reason: 'Branch Manager approved early-bird corporate waiver',
+    userStamp: 'HR-A',
+    timestamp: '2025-01-10T10:30:00Z',
+  },
+  {
+    id: 'l2',
+    candidateId: 'c1',
+    logType: 'financial',
+    description: 'Payment received: Rs.4,500 for Registration',
+    userStamp: 'HR-A',
+    timestamp: '2025-01-15T14:20:00Z',
+  },
+  {
+    id: 'l3',
+    candidateId: 'c1',
+    logType: 'structural',
+    description: 'Updated base fee: Registration from Rs.5,000 to Rs.4,500',
+    reason: 'Negotiated discount with candidate family',
+    userStamp: 'HR-B',
+    timestamp: '2025-02-01T09:15:00Z',
+  },
+  {
+    id: 'l4',
+    candidateId: 'c1',
+    logType: 'bgv',
+    description: 'BGV status changed to Pending',
+    userStamp: 'HR-A',
+    timestamp: '2025-01-20T11:00:00Z',
+  },
+  {
+    id: 'l5',
+    candidateId: 'c1',
+    logType: 'financial',
+    description: 'Payment received: Rs.25,000 for Course Fee',
+    userStamp: 'HR-A',
+    timestamp: '2025-02-10T16:45:00Z',
+  },
+];
+
 const defaultSettings: AppSettings = {
   bgvTeamEmail: 'bgv-team@pythonhr.com',
   orgName: 'Python HR',
@@ -207,6 +256,8 @@ const defaultSettings: AppSettings = {
 export const useStore = create<AppState>((set, get) => ({
   candidates: mockCandidates,
   trackedCandidates: mockTracked,
+  auditLogs: mockLogs,
+  paymentRecords: [],
   activeProfileId: null,
   searchQuery: '',
   activeFilters: [],
@@ -252,6 +303,12 @@ export const useStore = create<AppState>((set, get) => ({
     }),
   })),
   updateSettings: (settings) => set({ settings }),
+  addPaymentRecord: (payment) => set((s) => ({
+    paymentRecords: [payment, ...s.paymentRecords],
+  })),
+  addAuditLog: (log) => set((s) => ({
+    auditLogs: [log, ...s.auditLogs],
+  })),
   getCandidateById: (id) => get().candidates.find((c) => c.id === id),
   getFilteredCandidates: () => {
     const { candidates, searchQuery, activeFilters } = get();

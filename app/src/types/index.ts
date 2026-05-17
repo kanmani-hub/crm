@@ -74,6 +74,17 @@ export interface TrackedCandidate {
   timestamp: string;
 }
 
+export interface PaymentRecord {
+  id: string;
+  candidateId: string;
+  pipelineType: PipelineType;
+  amount: number;
+  transactionRef?: string;
+  notes?: string;
+  timestamp: string;
+  userStamp: string;
+}
+
 export interface FilterChip {
   id: string;
   label: string;

@@ -1,52 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { useStore } from '@/store/useStore';
-import type { AuditLogEntry, LogType } from '@/types';
-
-const mockLogs: AuditLogEntry[] = [
-  {
-    id: 'l1',
-    candidateId: 'c1',
-    logType: 'structural',
-    description: 'Applied discount: Corporate Waiver (-Rs.2,000)',
-    reason: 'Branch Manager approved early-bird corporate waiver',
-    userStamp: 'HR-A',
-    timestamp: '2025-01-10T10:30:00Z',
-  },
-  {
-    id: 'l2',
-    candidateId: 'c1',
-    logType: 'financial',
-    description: 'Payment received: Rs.4,500 for Registration',
-    userStamp: 'HR-A',
-    timestamp: '2025-01-15T14:20:00Z',
-  },
-  {
-    id: 'l3',
-    candidateId: 'c1',
-    logType: 'structural',
-    description: 'Updated base fee: Registration from Rs.5,000 to Rs.4,500',
-    reason: 'Negotiated discount with candidate family',
-    userStamp: 'HR-B',
-    timestamp: '2025-02-01T09:15:00Z',
-  },
-  {
-    id: 'l4',
-    candidateId: 'c1',
-    logType: 'bgv',
-    description: 'BGV status changed to Pending',
-    userStamp: 'HR-A',
-    timestamp: '2025-01-20T11:00:00Z',
-  },
-  {
-    id: 'l5',
-    candidateId: 'c1',
-    logType: 'financial',
-    description: 'Payment received: Rs.25,000 for Course Fee',
-    userStamp: 'HR-A',
-    timestamp: '2025-02-10T16:45:00Z',
-  },
-];
+import type { LogType } from '@/types';
 
 const typeConfig: Record<LogType, { dot: string; label: string }> = {
   financial: { dot: 'bg-cc-green', label: 'FINANCIAL' },
@@ -55,14 +10,14 @@ const typeConfig: Record<LogType, { dot: string; label: string }> = {
 };
 
 export default function ChangesSidebar() {
-  const { sidebarOpen, setSidebarOpen, activeProfileId, getCandidateById } = useStore();
+  const { sidebarOpen, setSidebarOpen, activeProfileId, getCandidateById, auditLogs } = useStore();
   const candidate = activeProfileId ? getCandidateById(activeProfileId) : null;
 
-  const filteredLogs = mockLogs.filter((l) => l.candidateId === activeProfileId);
+  const filteredLogs = auditLogs.filter((l) => l.candidateId === activeProfileId);
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
-    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   return (

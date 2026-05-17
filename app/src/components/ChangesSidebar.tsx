@@ -52,18 +52,24 @@ export default function ChangesSidebar() {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed right-0 top-14 bottom-0 w-full max-w-[420px] bg-cc-base-deep border-l border-cc-gridline z-[95] shadow-drawer flex flex-col"
+            className="fixed right-0 top-0 sm:top-14 bottom-0 w-full max-w-none sm:max-w-[420px] bg-cc-base-deep border-l border-cc-gridline z-[120] shadow-drawer flex flex-col"
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-cc-gridline">
-              <div>
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 p-4 border-b border-cc-gridline bg-cc-base-deep">
+              <div className="min-w-0">
                 <h3 className="section-header">CHANGE LOG</h3>
                 {candidate && (
-                  <p className="font-sans text-sm font-medium text-cc-text-high mt-1">{candidate.fullName}</p>
+                  <p className="font-sans text-sm font-medium text-cc-text-high mt-1 truncate">{candidate.fullName}</p>
                 )}
               </div>
-              <button onClick={() => setSidebarOpen(false)} className="p-1 hover:bg-cc-base-elevated rounded transition-colors">
-                <X size={20} className="text-cc-text-mid" />
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(false)}
+                className="inline-flex h-10 flex-shrink-0 items-center gap-2 rounded border border-cc-gridline bg-cc-base-surface px-3 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-text transition-colors"
+                aria-label="Close changes panel"
+              >
+                <X size={16} />
+                Close
               </button>
             </div>
 

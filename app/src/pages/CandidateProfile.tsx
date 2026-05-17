@@ -511,7 +511,7 @@ export default function CandidateProfile() {
                     onClick={() => setActivePipeline(tab.type)}
                     className={`px-4 py-3 font-mono text-[11px] font-medium uppercase tracking-[0.06em] whitespace-nowrap border-b-2 transition-all ${
                       activePipeline === tab.type
-                        ? 'text-white bg-cc-base-surface'
+                        ? 'text-cc-text-high bg-cc-base-elevated'
                         : 'text-cc-text-mid hover:text-cc-warm-text border-transparent'
                     }`}
                     style={{

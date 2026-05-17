@@ -2,7 +2,7 @@ export type PipelineType = 'registration' | 'course' | 'document' | 'placement';
 
 export type BGVStatus = 'pending' | 'in-review' | 'cleared';
 
-export type TrackedStatus = 'form-pending' | 'bgv-submitted' | 'cleared';
+export type TrackedStatus = 'form-pending' | 'bgv-submitted' | 'contacts-sent' | 'cleared';
 
 export type LogType = 'financial' | 'structural' | 'bgv';
 
@@ -70,6 +70,7 @@ export interface TrackedCandidate {
   payloadType: PayloadType;
   email: string;
   name?: string;
+  contactCount?: number;
   timestamp: string;
 }
 
@@ -84,6 +85,7 @@ export interface FilterChip {
 export interface AppSettings {
   bgvTeamEmail: string;
   orgName: string;
+  contactEmails: string[];
   courses: string[];
   branches: string[];
   googleSheetLinks: {

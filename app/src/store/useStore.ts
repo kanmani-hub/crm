@@ -185,6 +185,11 @@ const mockTracked: TrackedCandidate[] = [
 const defaultSettings: AppSettings = {
   bgvTeamEmail: 'bgv-team@pythonhr.com',
   orgName: 'Python HR',
+  contactEmails: [
+    'recruiter1@company.com',
+    'leads@branch.com',
+    'placements@pythonhr.com',
+  ],
   courses: ['Python Full Stack', 'Data Science', 'Machine Learning', 'Web Development', 'Other'],
   branches: ['Main Branch', 'Online', 'Branch A', 'Branch B'],
   googleSheetLinks: {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, FileText, Shield, Send, ClipboardList, Clock } from 'lucide-react';
+import { Mail, FileText, Shield, Send, ClipboardList, Clock, Pencil, Check, X, Plus } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import type { PayloadType, TrackedStatus } from '@/types';
 import TopNavigationBar from '@/components/TopNavigationBar';
@@ -15,15 +15,99 @@ const toggles: { type: PayloadType; label: string; icon: typeof FileText; color:
 ];
 
 export default function Dashboard() {
-  const { trackedCandidates, addTrackedCandidate, updateTrackedStatus, showToast } = useStore();
+  const { trackedCandidates, settings, updateSettings, addTrackedCandidate, updateTrackedStatus, showToast } = useStore();
   const [email, setEmail] = useState('');
   const [selectedToggle, setSelectedToggle] = useState<PayloadType>('new-registration');
+  const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+  const [newContactEmail, setNewContactEmail] = useState('');
+  const [contactError, setContactError] = useState('');
+  const [editingContact, setEditingContact] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewCandidate, setReviewCandidate] = useState<string | null>(null);
 
   const validateEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+  const isContactMail = selectedToggle === 'contact-mail';
+
+  const toggleContact = (contactEmail: string) => {
+    setSelectedContacts((contacts) =>
+      contacts.includes(contactEmail)
+        ? contacts.filter((contact) => contact !== contactEmail)
+        : [...contacts, contactEmail]
+    );
+    setContactError('');
+  };
+
+  const handleAddContact = () => {
+    const nextEmail = newContactEmail.trim();
+    if (!nextEmail) {
+      setContactError('Enter a contact email to add');
+      return;
+    }
+    if (!validateEmail(nextEmail)) {
+      setContactError('Enter a valid contact email');
+      return;
+    }
+    if (settings.contactEmails.some((contact) => contact.toLowerCase() === nextEmail.toLowerCase())) {
+      setContactError('Contact already exists');
+      return;
+    }
+
+    updateSettings({
+      ...settings,
+      contactEmails: [...settings.contactEmails, nextEmail],
+    });
+    setSelectedContacts((contacts) => [...contacts, nextEmail]);
+    setNewContactEmail('');
+    setContactError('');
+    showToast('Contact added to pool');
+  };
+
+  const startEditContact = (contactEmail: string) => {
+    setEditingContact(contactEmail);
+    setEditingValue(contactEmail);
+    setContactError('');
+  };
+
+  const cancelEditContact = () => {
+    setEditingContact(null);
+    setEditingValue('');
+  };
+
+  const saveEditedContact = () => {
+    if (!editingContact) return;
+    const nextEmail = editingValue.trim();
+    if (!nextEmail) {
+      setContactError('Contact email cannot be empty');
+      return;
+    }
+    if (!validateEmail(nextEmail)) {
+      setContactError('Enter a valid contact email');
+      return;
+    }
+    const duplicate = settings.contactEmails.some(
+      (contact) => contact !== editingContact && contact.toLowerCase() === nextEmail.toLowerCase()
+    );
+    if (duplicate) {
+      setContactError('Contact already exists');
+      return;
+    }
+
+    updateSettings({
+      ...settings,
+      contactEmails: settings.contactEmails.map((contact) =>
+        contact === editingContact ? nextEmail : contact
+      ),
+    });
+    setSelectedContacts((contacts) =>
+      contacts.map((contact) => contact === editingContact ? nextEmail : contact)
+    );
+    cancelEditContact();
+    setContactError('');
+    showToast('Contact updated');
+  };
 
   const handleSend = async () => {
     if (!email.trim()) {
@@ -34,7 +118,12 @@ export default function Dashboard() {
       setEmailError('Please enter a valid email');
       return;
     }
+    if (isContactMail && selectedContacts.length === 0) {
+      setContactError('Select at least one contact to share');
+      return;
+    }
     setEmailError('');
+    setContactError('');
     setIsSending(true);
 
     // Simulate async dispatch
@@ -42,14 +131,22 @@ export default function Dashboard() {
 
     addTrackedCandidate({
       candidateId: `tc_${Date.now()}`,
-      status: 'form-pending' as TrackedStatus,
+      status: (isContactMail ? 'contacts-sent' : 'form-pending') as TrackedStatus,
       payloadType: selectedToggle,
       email: email.trim(),
+      contactCount: isContactMail ? selectedContacts.length : undefined,
       timestamp: new Date().toISOString(),
     });
 
-    showToast(`Form link dispatched to ${email.trim()}`);
+    showToast(
+      isContactMail
+        ? `${selectedContacts.length} Contacts successfully shared with ${email.trim()}`
+        : `Form link dispatched to ${email.trim()}`
+    );
     setEmail('');
+    if (isContactMail) {
+      setSelectedContacts([]);
+    }
     setIsSending(false);
   };
 
@@ -217,6 +314,123 @@ export default function Dashboard() {
             </div>
             {emailError && <p className="mt-1.5 micro-text text-cc-danger">{emailError}</p>}
 
+            <AnimatePresence initial={false}>
+              {isContactMail && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0, y: -8 }}
+                  animate={{ opacity: 1, height: 'auto', y: 0 }}
+                  exit={{ opacity: 0, height: 0, y: -8 }}
+                  transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-4 rounded border border-[rgba(91,168,124,0.18)] bg-[rgba(91,168,124,0.06)] p-4">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <span className="section-header">LIVE CONTACT POOL</span>
+                      <span className="micro-text text-cc-text-mid">
+                        {selectedContacts.length} selected
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {settings.contactEmails.map((contactEmail) => {
+                        const isChecked = selectedContacts.includes(contactEmail);
+                        const isEditing = editingContact === contactEmail;
+
+                        return (
+                          <div
+                            key={contactEmail}
+                            className="flex items-center gap-2 rounded bg-cc-base-elevated border border-cc-gridline px-3 py-2"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleContact(contactEmail)}
+                              disabled={isSending || isEditing}
+                              className="h-4 w-4 accent-[#5BA87C]"
+                              aria-label={`Select ${contactEmail}`}
+                            />
+
+                            {isEditing ? (
+                              <input
+                                type="email"
+                                value={editingValue}
+                                onChange={(e) => setEditingValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveEditedContact();
+                                  if (e.key === 'Escape') cancelEditContact();
+                                }}
+                                className="min-w-0 flex-1 h-8 bg-cc-base-surface border border-cc-gridline rounded px-2 font-sans text-[13px] text-cc-text-high focus:border-cc-warm-primary focus:outline-none"
+                                autoFocus
+                              />
+                            ) : (
+                              <span className="min-w-0 flex-1 truncate font-sans text-[13px] text-cc-text-high">
+                                {contactEmail}
+                              </span>
+                            )}
+
+                            {isEditing ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={saveEditedContact}
+                                  disabled={isSending}
+                                  className="h-7 w-7 inline-flex items-center justify-center rounded text-cc-green hover:bg-[rgba(91,168,124,0.12)] transition-colors"
+                                  aria-label="Save contact"
+                                >
+                                  <Check size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelEditContact}
+                                  disabled={isSending}
+                                  className="h-7 w-7 inline-flex items-center justify-center rounded text-cc-text-mid hover:text-cc-danger hover:bg-[rgba(201,75,75,0.1)] transition-colors"
+                                  aria-label="Cancel contact edit"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => startEditContact(contactEmail)}
+                                disabled={isSending}
+                                className="h-7 w-7 inline-flex items-center justify-center rounded text-cc-text-mid hover:text-cc-warm-text hover:bg-[rgba(199,178,153,0.08)] transition-colors"
+                                aria-label={`Edit ${contactEmail}`}
+                              >
+                                <Pencil size={13} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-3 flex gap-2">
+                      <input
+                        type="email"
+                        value={newContactEmail}
+                        onChange={(e) => { setNewContactEmail(e.target.value); setContactError(''); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddContact(); }}
+                        placeholder="Add contact email..."
+                        disabled={isSending}
+                        className="min-w-0 flex-1 h-10 bg-cc-base-elevated border border-cc-gridline rounded px-3 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-mid focus:border-cc-warm-primary focus:outline-none transition-colors"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddContact}
+                        disabled={isSending}
+                        className="inline-flex items-center gap-1.5 h-10 px-3 rounded bg-cc-green text-white font-mono text-[10px] font-semibold uppercase tracking-[0.06em] hover:brightness-110 disabled:opacity-60 transition-all"
+                      >
+                        <Plus size={14} />
+                        Add Contact
+                      </button>
+                    </div>
+                    {contactError && <p className="mt-2 micro-text text-cc-danger">{contactError}</p>}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Toggles + Send */}
             <div className="flex flex-wrap items-center gap-3 mt-4">
               {toggles.map((t) => {
@@ -294,7 +508,8 @@ export default function Dashboard() {
                       style={{
                         backgroundColor:
                           tc.status === 'form-pending' ? '#C9A84C' :
-                          tc.status === 'bgv-submitted' ? '#5B8FBF' : '#5BA87C',
+                          tc.status === 'bgv-submitted' ? '#5B8FBF' :
+                          tc.status === 'contacts-sent' ? '#5BA87C' : '#5BA87C',
                       }}
                     />
 
@@ -319,6 +534,12 @@ export default function Dashboard() {
                           >
                             REVIEW
                           </button>
+                        </>
+                      )}
+                      {tc.status === 'contacts-sent' && (
+                        <>
+                          <StatusBadge label="CONTACTS SENT" variant="green" />
+                          <StatusBadge label={`${tc.contactCount || 0} ENCLOSED`} variant="neutral" />
                         </>
                       )}
                       {tc.status === 'cleared' && (

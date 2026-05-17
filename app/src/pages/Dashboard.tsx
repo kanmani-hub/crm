@@ -339,23 +339,38 @@ export default function Dashboard() {
                         return (
                           <div
                             key={contactEmail}
-                            className="flex items-center gap-2 rounded bg-cc-base-elevated border border-cc-gridline px-3 py-2"
+                            role="checkbox"
+                            aria-checked={isChecked}
+                            tabIndex={isEditing || isSending ? -1 : 0}
+                            onClick={() => { if (!isEditing && !isSending) toggleContact(contactEmail); }}
+                            onKeyDown={(e) => {
+                              if ((e.key === 'Enter' || e.key === ' ') && !isEditing && !isSending) {
+                                e.preventDefault();
+                                toggleContact(contactEmail);
+                              }
+                            }}
+                            className={`flex items-center gap-2 rounded border px-3 py-2 transition-all ${
+                              isChecked
+                                ? 'border-cc-green bg-[rgba(91,168,124,0.14)]'
+                                : 'border-cc-gridline bg-cc-base-elevated hover:border-[rgba(91,168,124,0.45)] hover:bg-[rgba(91,168,124,0.08)]'
+                            } ${isEditing || isSending ? '' : 'cursor-pointer'}`}
                           >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => toggleContact(contactEmail)}
-                              disabled={isSending || isEditing}
-                              className="h-4 w-4 accent-[#5BA87C]"
-                              aria-label={`Select ${contactEmail}`}
-                            />
+                            <div className={`h-5 w-5 flex-shrink-0 rounded-sm border inline-flex items-center justify-center transition-colors ${
+                              isChecked
+                                ? 'bg-cc-green border-cc-green text-white'
+                                : 'bg-cc-base-surface border-cc-gridline text-transparent'
+                            }`}>
+                              <Check size={13} />
+                            </div>
 
                             {isEditing ? (
                               <input
                                 type="email"
                                 value={editingValue}
                                 onChange={(e) => setEditingValue(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
                                 onKeyDown={(e) => {
+                                  e.stopPropagation();
                                   if (e.key === 'Enter') saveEditedContact();
                                   if (e.key === 'Escape') cancelEditContact();
                                 }}
@@ -372,7 +387,7 @@ export default function Dashboard() {
                               <>
                                 <button
                                   type="button"
-                                  onClick={saveEditedContact}
+                                  onClick={(e) => { e.stopPropagation(); saveEditedContact(); }}
                                   disabled={isSending}
                                   className="h-7 w-7 inline-flex items-center justify-center rounded text-cc-green hover:bg-[rgba(91,168,124,0.12)] transition-colors"
                                   aria-label="Save contact"
@@ -381,7 +396,7 @@ export default function Dashboard() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={cancelEditContact}
+                                  onClick={(e) => { e.stopPropagation(); cancelEditContact(); }}
                                   disabled={isSending}
                                   className="h-7 w-7 inline-flex items-center justify-center rounded text-cc-text-mid hover:text-cc-danger hover:bg-[rgba(201,75,75,0.1)] transition-colors"
                                   aria-label="Cancel contact edit"
@@ -392,7 +407,7 @@ export default function Dashboard() {
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => startEditContact(contactEmail)}
+                                onClick={(e) => { e.stopPropagation(); startEditContact(contactEmail); }}
                                 disabled={isSending}
                                 className="h-7 w-7 inline-flex items-center justify-center rounded text-cc-text-mid hover:text-cc-warm-text hover:bg-[rgba(199,178,153,0.08)] transition-colors"
                                 aria-label={`Edit ${contactEmail}`}

@@ -37,6 +37,7 @@ export default function CandidateProfile() {
     addPaymentRecord,
     addAuditLog,
     showToast,
+    settings,
     globalEditMode,
     toggleGlobalEdit,
     setActiveProfileId,
@@ -196,8 +197,8 @@ export default function CandidateProfile() {
     { label: 'Email Address', field: 'email', type: 'text' as const },
     { label: 'Phone Number', field: 'phone', type: 'text' as const },
     { label: 'Date of Birth', field: 'dateOfBirth', type: 'date' as const },
-    { label: 'Branch', field: 'branch', type: 'text' as const },
-    { label: 'Course', field: 'course', type: 'text' as const },
+    { label: 'Branch', field: 'branch', type: 'select' as const, options: settings.branches },
+    { label: 'Course', field: 'course', type: 'select' as const, options: settings.courses },
     { label: 'Date of Joining', field: 'dateOfJoining', type: 'date' as const },
     { label: 'Current Status', field: 'currentStatus', type: 'select' as const, options: ['active', 'inactive', 'completed'] },
   ];

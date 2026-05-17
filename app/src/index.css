@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --background: 220 14% 8%;
+    --foreground: 30 12% 90%;
+    --card: 220 14% 12%;
+    --card-foreground: 30 12% 90%;
+    --popover: 220 14% 10%;
+    --popover-foreground: 30 12% 90%;
+    --primary: 17 52% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 12% 15%;
+    --secondary-foreground: 30 12% 90%;
+    --muted: 220 12% 15%;
+    --muted-foreground: 213 18% 60%;
+    --accent: 220 12% 15%;
+    --accent-foreground: 30 12% 90%;
+    --destructive: 0 55% 54%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 213 14% 19%;
+    --input: 213 14% 19%;
+    --ring: 17 52% 48%;
+    --radius: 2px;
+    --sidebar-background: 220 14% 10%;
+    --sidebar-foreground: 30 12% 90%;
+    --sidebar-primary: 17 52% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 12% 15%;
+    --sidebar-accent-foreground: 30 12% 90%;
+    --sidebar-border: 213 14% 19%;
+    --sidebar-ring: 17 52% 48%;
+  }
+
+  body {
+    @apply bg-cc-base-deep text-cc-text-high font-sans antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    @apply border-cc-gridline;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #121418;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2A3038;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3A4048;
+  }
+}
+
+@layer components {
+  .section-header {
+    @apply font-mono text-[clamp(0.65rem,0.9vw,0.8rem)] font-medium tracking-[0.08em] uppercase text-cc-warm-text;
+  }
+
+  .data-figure {
+    @apply font-mono text-[clamp(1.25rem,2vw,1.75rem)] font-light tracking-[-0.02em];
+  }
+
+  .nav-label {
+    @apply font-mono text-[11px] font-normal tracking-[0.08em] uppercase;
+  }
+
+  .micro-text {
+    @apply font-mono text-[11px] font-normal tracking-[0.04em];
+  }
+}

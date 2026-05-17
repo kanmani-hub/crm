@@ -1,0 +1,300 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden}
+.sec-label{font-size:10px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.pencil{background:none;border:none;cursor:pointer;color:var(--color-text-secondary);padding:2px 4px;border-radius:4px;line-height:1;display:inline-flex;align-items:center}
+.pencil:hover{background:var(--color-background-secondary)}
+.pencil i{font-size:13px}
+.tag-pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;padding:4px 10px;border-radius:20px;cursor:pointer}
+.tag-on-green{background:#EAF3DE;color:#27500A;border:0.5px solid #97C459}
+.tag-on-purple{background:#EEEDFE;color:#3C3489;border:0.5px solid #AFA9EC}
+.tag-on-amber{background:#FAEEDA;color:#633806;border:0.5px solid #EF9F27}
+.tag-on-teal{background:#E1F5EE;color:#085041;border:0.5px solid #5DCAA5}
+.tag-off{background:var(--color-background-secondary);color:var(--color-text-secondary);border:0.5px dashed var(--color-border-secondary)}
+.edit-inline{display:none;align-items:center;gap:6px;margin-top:6px}
+.edit-inline.show{display:flex}
+.edit-inline input{font-size:12px;padding:4px 8px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-secondary);color:var(--color-text-primary);width:160px}
+.edit-inline select{font-size:12px;padding:4px 8px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-secondary);color:var(--color-text-primary)}
+.save-btn{font-size:11px;padding:4px 10px;border-radius:var(--border-radius-md);border:none;background:#534AB7;color:#fff;cursor:pointer}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.info-cell{display:flex;flex-direction:column;gap:2px}
+.info-lbl{font-size:10px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.05em}
+.info-val{font-size:12px;font-weight:500;color:var(--color-text-primary);display:flex;align-items:center;gap:4px}
+.emp-tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;padding:4px 10px;border-radius:20px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)}
+.emp-tag .rm{cursor:pointer;color:var(--color-text-secondary);font-size:12px;line-height:1}
+.emp-tag .rm:hover{color:#A32D2D}
+.emp-add{display:flex;gap:6px;margin-top:8px;align-items:center}
+.emp-add input{font-size:12px;flex:1;padding:5px 10px;border:0.5px dashed var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-secondary);color:var(--color-text-primary)}
+.emp-add button{font-size:12px;padding:5px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:none;color:var(--color-text-secondary);cursor:pointer}
+.emp-add button:hover{background:var(--color-background-secondary)}
+.doc-col-head{font-size:11px;font-weight:500;color:var(--color-text-primary);margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.doc-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--border-radius-md);cursor:pointer;transition:background .12s;border:0.5px solid transparent;margin-bottom:4px}
+.doc-item:hover{background:var(--color-background-secondary)}
+.doc-item.checked{background:#EAF3DE;border-color:#97C459}
+.doc-cb{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--color-border-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .12s}
+.doc-item.checked .doc-cb{background:#1D9E75;border-color:#1D9E75}
+.doc-name{font-size:12px;color:var(--color-text-primary)}
+.doc-item.checked .doc-name{color:#27500A;font-weight:500}
+.divider{height:0.5px;background:var(--color-border-tertiary);margin:14px 0}
+.bgv-opts button{font-size:11px;padding:4px 10px;border-radius:20px;border:0.5px solid var(--color-border-secondary);background:none;cursor:pointer;color:var(--color-text-secondary);margin-right:4px;margin-bottom:4px}
+.bgv-opts button.active-bgv{background:#EEEDFE;border-color:#AFA9EC;color:#3C3489;font-weight:500}
+</style>
+
+<h2 class="sr-only">Candidate profile workspace — living tags, employment ledger, and document vault</h2>
+
+<div class="card">
+
+  <div style="padding:16px;border-bottom:0.5px solid var(--color-border-tertiary)">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div style="width:44px;height:44px;border-radius:50%;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500;color:#3C3489;flex-shrink:0">AK</div>
+      <div>
+        <div style="font-size:15px;font-weight:500;color:var(--color-text-primary);display:flex;align-items:center;gap:5px">
+          Arjun Kumar
+          <button class="pencil" aria-label="Edit name"><i class="ti ti-pencil"></i></button>
+        </div>
+        <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">arjun.k@gmail.com · +91 98400 12345</div>
+      </div>
+    </div>
+
+    <div class="sec-label">Living tags <button class="pencil" id="tag-edit-btn" onclick="toggleTagEdit()" aria-label="Edit tags"><i class="ti ti-pencil"></i></button></div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">
+      <span class="tag-pill tag-on-green" id="placed-tag" onclick="togglePlaced()">
+        <i class="ti ti-check" style="font-size:11px" aria-hidden="true"></i>
+        <span id="placed-label">Placed</span>
+      </span>
+
+      <span class="tag-pill tag-on-teal" id="bgv-tag">
+        <i class="ti ti-shield" style="font-size:11px" aria-hidden="true"></i>
+        <span id="bgv-label">BGV: In progress</span>
+      </span>
+
+      <span class="tag-pill tag-on-purple" id="company-tag">
+        <i class="ti ti-building" style="font-size:11px" aria-hidden="true"></i>
+        <span id="company-label">Infosys BPM</span>
+      </span>
+    </div>
+
+    <div class="edit-inline" id="tag-editor">
+      <div style="display:flex;flex-direction:column;gap:8px;width:100%">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--color-text-secondary);width:90px">Placed status</span>
+          <div style="display:flex;gap:4px">
+            <button style="font-size:11px;padding:3px 10px;border-radius:20px;border:0.5px solid var(--color-border-secondary);cursor:pointer" id="placed-yes" onclick="setPlaced(true)">Placed</button>
+            <button style="font-size:11px;padding:3px 10px;border-radius:20px;border:0.5px solid var(--color-border-secondary);cursor:pointer" id="placed-no" onclick="setPlaced(false)">Not placed</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--color-text-secondary);width:90px">BGV status</span>
+          <div class="bgv-opts" id="bgv-opts">
+            <button onclick="setBGV(this,'Pending')">Pending</button>
+            <button onclick="setBGV(this,'In progress')" class="active-bgv">In progress</button>
+            <button onclick="setBGV(this,'Cleared')">Cleared</button>
+            <button onclick="setBGV(this,'On hold')">On hold</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;color:var(--color-text-secondary);width:90px">Company</span>
+          <input id="company-input" type="text" value="Infosys BPM" style="font-size:12px;padding:4px 8px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-secondary);color:var(--color-text-primary);width:180px" />
+          <button class="save-btn" onclick="saveCompany()">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:0.5px solid var(--color-border-tertiary)">
+    <div style="padding:16px;border-right:0.5px solid var(--color-border-tertiary)">
+      <div class="sec-label">Core details</div>
+      <div class="info-grid" style="margin-bottom:14px">
+        <div class="info-cell">
+          <span class="info-lbl">Course</span>
+          <span class="info-val">Data Analytics <button class="pencil" aria-label="Edit course"><i class="ti ti-pencil"></i></button></span>
+        </div>
+        <div class="info-cell">
+          <span class="info-lbl">Branch</span>
+          <span class="info-val">Chennai <button class="pencil" aria-label="Edit branch"><i class="ti ti-pencil"></i></button></span>
+        </div>
+        <div class="info-cell">
+          <span class="info-lbl">Batch</span>
+          <span class="info-val">Apr 2025 <button class="pencil" aria-label="Edit batch"><i class="ti ti-pencil"></i></button></span>
+        </div>
+        <div class="info-cell">
+          <span class="info-lbl">Qualification</span>
+          <span class="info-val">B.E CSE <button class="pencil" aria-label="Edit qualification"><i class="ti ti-pencil"></i></button></span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="sec-label">Past employment ledger</div>
+      <div id="emp-list" style="display:flex;flex-wrap:wrap;gap:5px;min-height:28px">
+        <span class="emp-tag"><i class="ti ti-building" style="font-size:12px" aria-hidden="true"></i>TCS <span class="rm" onclick="removeEmp(this)" aria-label="Remove TCS">×</span></span>
+        <span class="emp-tag"><i class="ti ti-building" style="font-size:12px" aria-hidden="true"></i>Cognizant <span class="rm" onclick="removeEmp(this)" aria-label="Remove Cognizant">×</span></span>
+      </div>
+      <div class="emp-add">
+        <input type="text" id="emp-input" placeholder="Add company name…" />
+        <button onclick="addEmp()"><i class="ti ti-plus" style="font-size:13px" aria-hidden="true"></i> Add</button>
+      </div>
+    </div>
+
+    <div style="padding:16px">
+      <div class="sec-label">Document vault</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div class="doc-col-head"><i class="ti ti-inbox" style="font-size:14px;color:#0C447C" aria-hidden="true"></i>Documents received</div>
+          <div class="doc-item checked" onclick="toggleDoc(this)">
+            <div class="doc-cb"><i class="ti ti-check" style="font-size:10px;color:#fff" aria-hidden="true"></i></div>
+            <span class="doc-name">Offer letter</span>
+          </div>
+          <div class="doc-item" onclick="toggleDoc(this)">
+            <div class="doc-cb"></div>
+            <span class="doc-name">Appraisals</span>
+          </div>
+          <div class="doc-item checked" onclick="toggleDoc(this)">
+            <div class="doc-cb"><i class="ti ti-check" style="font-size:10px;color:#fff" aria-hidden="true"></i></div>
+            <span class="doc-name">Payslips</span>
+          </div>
+          <div class="doc-item" onclick="toggleDoc(this)">
+            <div class="doc-cb"></div>
+            <span class="doc-name">Relieving letter</span>
+          </div>
+          <div class="doc-item" onclick="toggleDoc(this)">
+            <div class="doc-cb"></div>
+            <span class="doc-name">Counter offer</span>
+          </div>
+        </div>
+
+        <div>
+          <div class="doc-col-head"><i class="ti ti-send" style="font-size:14px;color:#085041" aria-hidden="true"></i>Documents applied</div>
+          <div class="doc-item checked" onclick="toggleDoc(this)">
+            <div class="doc-cb"><i class="ti ti-check" style="font-size:10px;color:#fff" aria-hidden="true"></i></div>
+            <span class="doc-name">Offer letter</span>
+          </div>
+          <div class="doc-item" onclick="toggleDoc(this)">
+            <div class="doc-cb"></div>
+            <span class="doc-name">Appraisals</span>
+          </div>
+          <div class="doc-item checked" onclick="toggleDoc(this)">
+            <div class="doc-cb"><i class="ti ti-check" style="font-size:10px;color:#fff" aria-hidden="true"></i></div>
+            <span class="doc-name">Payslips</span>
+          </div>
+          <div class="doc-item checked" onclick="toggleDoc(this)">
+            <div class="doc-cb"><i class="ti ti-check" style="font-size:10px;color:#fff" aria-hidden="true"></i></div>
+            <span class="doc-name">Relieving letter</span>
+          </div>
+          <div class="doc-item" onclick="toggleDoc(this)">
+            <div class="doc-cb"></div>
+            <span class="doc-name">Counter offer</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;background:var(--color-background-secondary)">
+    <div style="display:flex;gap:12px">
+      <span id="recv-count" style="font-size:11px;color:var(--color-text-secondary)"></span>
+      <span id="appl-count" style="font-size:11px;color:var(--color-text-secondary)"></span>
+    </div>
+    <div style="display:flex;gap:6px">
+      <span style="font-size:11px;padding:3px 9px;background:#E6F1FB;color:#0C447C;border-radius:10px;font-weight:500">BGV: In progress</span>
+      <span style="font-size:11px;padding:3px 9px;background:#EAF3DE;color:#27500A;border-radius:10px;font-weight:500">Placed · Infosys BPM</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+var tagEditorOpen = false;
+function toggleTagEdit(){
+  tagEditorOpen = !tagEditorOpen;
+  document.getElementById('tag-editor').classList.toggle('show', tagEditorOpen);
+}
+
+var isPlaced = true;
+function togglePlaced(){ setPlaced(!isPlaced); }
+function setPlaced(v){
+  isPlaced = v;
+  var tag = document.getElementById('placed-tag');
+  var lbl = document.getElementById('placed-label');
+  if(v){
+    tag.className='tag-pill tag-on-green';
+    lbl.textContent='Placed';
+  } else {
+    tag.className='tag-pill tag-off';
+    lbl.textContent='Not placed';
+  }
+  document.getElementById('placed-yes').style.background = v ? '#EAF3DE' : '';
+  document.getElementById('placed-yes').style.color = v ? '#27500A' : '';
+  document.getElementById('placed-no').style.background = !v ? '#FCEBEB' : '';
+  document.getElementById('placed-no').style.color = !v ? '#A32D2D' : '';
+  updateFooter();
+}
+
+function setBGV(btn, val){
+  document.querySelectorAll('.bgv-opts button').forEach(b=>b.classList.remove('active-bgv'));
+  btn.classList.add('active-bgv');
+  document.getElementById('bgv-label').textContent = 'BGV: ' + val;
+  updateFooter();
+}
+
+function saveCompany(){
+  var v = document.getElementById('company-input').value.trim() || '—';
+  document.getElementById('company-label').textContent = v;
+  updateFooter();
+}
+
+function updateFooter(){
+  var co = document.getElementById('company-label').textContent;
+  var bgv = document.getElementById('bgv-label').textContent;
+  var placed = isPlaced;
+  var pills = document.querySelector('.card > div:last-child > div:last-child');
+  pills.children[0].textContent = bgv;
+  pills.children[1].textContent = placed ? 'Placed · ' + co : 'Not placed';
+}
+
+function toggleDoc(el){
+  el.classList.toggle('checked');
+  var cb = el.querySelector('.doc-cb');
+  if(el.classList.contains('checked')){
+    cb.innerHTML = '<i class="ti ti-check" style="font-size:10px;color:#fff" aria-hidden="true"></i>';
+  } else {
+    cb.innerHTML = '';
+  }
+  countDocs();
+}
+
+function countDocs(){
+  var cols = document.querySelectorAll('.doc-col-head');
+  var leftChecked = cols[0].parentElement.querySelectorAll('.doc-item.checked').length;
+  var rightChecked = cols[1].parentElement.querySelectorAll('.doc-item.checked').length;
+  document.getElementById('recv-count').textContent = leftChecked + '/5 documents received';
+  document.getElementById('appl-count').textContent = rightChecked + '/5 documents applied';
+}
+
+function addEmp(){
+  var input = document.getElementById('emp-input');
+  var name = input.value.trim();
+  if(!name) return;
+  var list = document.getElementById('emp-list');
+  var tag = document.createElement('span');
+  tag.className = 'emp-tag';
+  tag.innerHTML = '<i class="ti ti-building" style="font-size:12px" aria-hidden="true"></i>' + name + ' <span class="rm" onclick="removeEmp(this)" aria-label="Remove ' + name + '">×</span>';
+  list.appendChild(tag);
+  input.value = '';
+}
+
+function removeEmp(el){
+  el.parentElement.remove();
+}
+
+document.getElementById('emp-input').addEventListener('keydown', function(e){
+  if(e.key === 'Enter') addEmp();
+});
+
+countDocs();
+setPlaced(true);
+</script>

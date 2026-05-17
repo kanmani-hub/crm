@@ -108,6 +108,4 @@ export interface AppSettings {
     auditLogs: string;
     settings: string;
   };
-  emailNotifications: boolean;
-  bgvAlerts: boolean;
 }

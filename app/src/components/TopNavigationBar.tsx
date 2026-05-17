@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router';
-import { Bell, Menu, Search, X } from 'lucide-react';
+import { Menu, Moon, Search, Sun, X } from 'lucide-react';
 import { useState } from 'react';
 import { useStore } from '@/store/useStore';
 import StatusBadge from './StatusBadge';
@@ -10,8 +10,8 @@ export default function TopNavigationBar() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
   const {
-    trackedCandidates,
     settings,
+    themeMode,
     searchQuery,
     activeFilters,
     branchFilter,
@@ -23,10 +23,11 @@ export default function TopNavigationBar() {
     setBranchFilter,
     setCourseFilter,
     setPlacementFilter,
+    toggleThemeMode,
     getFilteredCandidates,
   } = useStore();
-  const pendingCount = trackedCandidates.filter((t) => t.status === 'form-pending').length;
   const filteredCandidates = getFilteredCandidates();
+  const isSunny = themeMode === 'sunny';
   const hasActiveSearch =
     searchQuery ||
     activeFilters.length > 0 ||
@@ -64,12 +65,23 @@ export default function TopNavigationBar() {
 
         {/* Right cluster */}
         <div className="flex items-center gap-3">
-          {/* Notification bell */}
-          <button className="relative p-2 hover:bg-cc-base-elevated rounded transition-colors">
-            <Bell size={20} strokeWidth={1.5} className="text-cc-text-mid" />
-            {pendingCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-cc-warm-primary" />
-            )}
+          {/* Theme switcher */}
+          <button
+            type="button"
+            onClick={toggleThemeMode}
+            className="group relative h-8 w-[68px] rounded-full border border-cc-gridline bg-cc-base-surface p-1 shadow-inset-glow transition-colors hover:border-cc-warm-primary"
+            aria-label={isSunny ? 'Switch to Command Center theme' : 'Switch to Sunny Meadows theme'}
+            title={isSunny ? 'Command Center theme' : 'Sunny Meadows theme'}
+          >
+            <span
+              className={`absolute top-1 h-6 w-6 rounded-full bg-cc-warm-primary shadow-[0_3px_10px_rgba(0,0,0,0.22)] transition-transform ${
+                isSunny ? 'translate-x-9' : 'translate-x-0'
+              }`}
+            />
+            <span className="relative z-10 flex h-full items-center justify-between px-1">
+              <Moon size={14} className={isSunny ? 'text-cc-text-low' : 'text-white'} />
+              <Sun size={14} className={isSunny ? 'text-white' : 'text-cc-text-low'} />
+            </span>
           </button>
 
           {/* Avatar */}

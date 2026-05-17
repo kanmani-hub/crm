@@ -40,12 +40,85 @@
     --sidebar-accent-foreground: 30 12% 90%;
     --sidebar-border: 213 14% 19%;
     --sidebar-ring: 17 52% 48%;
+
+    --cc-base-deep: 18 20 24;
+    --cc-base-surface: 26 29 36;
+    --cc-base-elevated: 34 38 46;
+    --cc-base-elevated-strong: 45 51 64;
+    --cc-warm-primary: 184 92 61;
+    --cc-warm-primary-hover: 212 114 82;
+    --cc-warm-muted: 138 74 54;
+    --cc-warm-text: 199 178 153;
+    --cc-gold: 201 168 76;
+    --cc-green: 91 168 124;
+    --cc-blue: 91 143 191;
+    --cc-text-high: 232 228 224;
+    --cc-text-mid: 138 154 173;
+    --cc-text-low: 90 106 125;
+    --cc-gridline: 42 48 56;
+    --cc-danger: 201 75 75;
+    --cc-danger-muted: 139 53 53;
+    --cc-status-amber: 201 168 76;
+    --cc-status-green: 91 168 124;
+    color-scheme: dark;
+  }
+
+  .theme-sunny {
+    --background: 50 52% 91%;
+    --foreground: 88 31% 15%;
+    --card: 48 67% 96%;
+    --card-foreground: 88 31% 15%;
+    --popover: 48 67% 96%;
+    --popover-foreground: 88 31% 15%;
+    --primary: 88 34% 43%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 49 47% 82%;
+    --secondary-foreground: 88 31% 15%;
+    --muted: 49 47% 82%;
+    --muted-foreground: 74 22% 39%;
+    --accent: 47 76% 79%;
+    --accent-foreground: 88 31% 15%;
+    --destructive: 5 46% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 49 30% 70%;
+    --input: 49 30% 70%;
+    --ring: 88 34% 43%;
+    --sidebar-background: 50 52% 91%;
+    --sidebar-foreground: 88 31% 15%;
+    --sidebar-primary: 88 34% 43%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 49 47% 82%;
+    --sidebar-accent-foreground: 88 31% 15%;
+    --sidebar-border: 49 30% 70%;
+    --sidebar-ring: 88 34% 43%;
+
+    --cc-base-deep: 246 241 216;
+    --cc-base-surface: 255 251 234;
+    --cc-base-elevated: 241 235 200;
+    --cc-base-elevated-strong: 228 221 174;
+    --cc-warm-primary: 109 142 63;
+    --cc-warm-primary-hover: 91 124 49;
+    --cc-warm-muted: 146 155 91;
+    --cc-warm-text: 83 112 48;
+    --cc-gold: 206 143 41;
+    --cc-green: 83 148 87;
+    --cc-blue: 70 132 166;
+    --cc-text-high: 36 48 24;
+    --cc-text-mid: 100 116 72;
+    --cc-text-low: 132 146 105;
+    --cc-gridline: 214 207 162;
+    --cc-danger: 179 75 62;
+    --cc-danger-muted: 132 58 49;
+    --cc-status-amber: 206 143 41;
+    --cc-status-green: 83 148 87;
+    color-scheme: light;
   }
 
   body {
     @apply bg-cc-base-deep text-cc-text-high font-sans antialiased;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 220ms ease, color 220ms ease;
   }
 
   * {
@@ -58,14 +131,14 @@
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #121418;
+    background: rgb(var(--cc-base-deep));
   }
   ::-webkit-scrollbar-thumb {
-    background: #2A3038;
+    background: rgb(var(--cc-gridline));
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #3A4048;
+    background: rgb(var(--cc-base-elevated-strong));
   }
 }
 

@@ -135,21 +135,6 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="mt-8">
-              <h3 className="section-header mb-4">NOTIFICATIONS</h3>
-              <div className="space-y-3">
-                <ToggleSwitch
-                  label="Email notifications for new registrations"
-                  checked={formSettings.emailNotifications}
-                  onChange={(v) => updateField('emailNotifications', v)}
-                />
-                <ToggleSwitch
-                  label="BGV status change alerts"
-                  checked={formSettings.bgvAlerts}
-                  onChange={(v) => updateField('bgvAlerts', v)}
-                />
-              </div>
-            </div>
           </section>
 
           <section className="bg-cc-base-surface border border-cc-gridline rounded p-6 shadow-inset-glow">
@@ -295,28 +280,5 @@ function OptionEditor({
         ))}
       </div>
     </div>
-  );
-}
-
-function ToggleSwitch({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className="flex items-center gap-3 w-full text-left"
-    >
-      <motion.div
-        className="w-10 h-[22px] rounded-full relative flex-shrink-0"
-        animate={{ backgroundColor: checked ? '#5BA87C' : '#2A3038' }}
-        transition={{ duration: 0.2 }}
-      >
-        <motion.div
-          className="w-[18px] h-[18px] rounded-full bg-white absolute top-[2px]"
-          animate={{ left: checked ? 20 : 2 }}
-          transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-        />
-      </motion.div>
-      <span className="font-sans text-[13px] text-cc-text-high">{label}</span>
-    </button>
   );
 }

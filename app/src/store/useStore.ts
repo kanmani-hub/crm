@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { Candidate, TrackedCandidate, AppSettings, PipelineType, AuditLogEntry, PaymentRecord } from '@/types';
 
+type ThemeMode = 'command' | 'sunny';
+
 interface AppState {
   candidates: Candidate[];
   trackedCandidates: TrackedCandidate[];
@@ -13,6 +15,7 @@ interface AppState {
   courseFilter: string;
   placementFilter: string;
   settings: AppSettings;
+  themeMode: ThemeMode;
   globalEditMode: boolean;
   sidebarOpen: boolean;
   toastMessage: string | null;
@@ -25,6 +28,7 @@ interface AppState {
   setCourseFilter: (course: string) => void;
   setPlacementFilter: (placement: string) => void;
   clearSearchQuery: () => void;
+  toggleThemeMode: () => void;
   setActiveProfileId: (id: string | null) => void;
   toggleGlobalEdit: () => void;
   setSidebarOpen: (open: boolean) => void;
@@ -43,6 +47,10 @@ interface AppState {
 
 const now = new Date();
 const minsAgo = (m: number) => new Date(now.getTime() - m * 60000).toISOString();
+const getInitialThemeMode = (): ThemeMode => {
+  if (typeof window === 'undefined') return 'command';
+  return window.localStorage.getItem('pycrm-theme-mode') === 'sunny' ? 'sunny' : 'command';
+};
 const createDefaultFinancials = (): Candidate['financials'] => [
   { pipelineType: 'registration', baseFee: 0, adjustments: [], paidToDate: 0 },
   { pipelineType: 'course', baseFee: 30000, adjustments: [], paidToDate: 0 },
@@ -238,8 +246,6 @@ const defaultSettings: AppSettings = {
     auditLogs: '',
     settings: '',
   },
-  emailNotifications: true,
-  bgvAlerts: true,
 };
 
 export const useStore = create<AppState>((set, get) => ({
@@ -254,6 +260,7 @@ export const useStore = create<AppState>((set, get) => ({
   courseFilter: 'all',
   placementFilter: 'all',
   settings: defaultSettings,
+  themeMode: getInitialThemeMode(),
   globalEditMode: false,
   sidebarOpen: false,
   toastMessage: null,
@@ -269,6 +276,13 @@ export const useStore = create<AppState>((set, get) => ({
   setBranchFilter: (branch) => set({ branchFilter: branch }),
   setCourseFilter: (course) => set({ courseFilter: course }),
   setPlacementFilter: (placement) => set({ placementFilter: placement }),
+  toggleThemeMode: () => set((s) => {
+    const next = s.themeMode === 'sunny' ? 'command' : 'sunny';
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('pycrm-theme-mode', next);
+    }
+    return { themeMode: next };
+  }),
   setActiveProfileId: (id) => set({ activeProfileId: id, sidebarOpen: false }),
   toggleGlobalEdit: () => set((s) => ({ globalEditMode: !s.globalEditMode })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),

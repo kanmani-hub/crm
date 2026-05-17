@@ -1,10 +1,12 @@
 import { Routes, Route, useLocation, Navigate } from 'react-router';
+import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Dashboard from './pages/Dashboard';
 import CandidateProfile from './pages/CandidateProfile';
 import SettingsPage from './pages/Settings';
 import NewRegistrationForm from './pages/NewRegistrationForm';
 import BGVForm from './pages/BGVForm';
+import { useStore } from './store/useStore';
 
 function PageTransition({ children }: { children: React.ReactNode }) {
   return (
@@ -22,6 +24,11 @@ function PageTransition({ children }: { children: React.ReactNode }) {
 export default function App() {
   const location = useLocation();
   const isExternalForm = location.pathname.startsWith('/form/');
+  const themeMode = useStore((state) => state.themeMode);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('theme-sunny', themeMode === 'sunny');
+  }, [themeMode]);
 
   // External forms don't use page transitions (they have their own theme)
   if (isExternalForm) {

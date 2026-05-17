@@ -128,8 +128,10 @@ export default function FinancialCard({ candidateId, pipeline, accentColor }: Fi
                   <span className="font-sans text-sm text-cc-warm-text">{adj.label}</span>
                 </div>
                 <button
+                  type="button"
                   onClick={() => handleRemoveAdjustment(adj.id)}
-                  className="p-1 hover:bg-cc-base-elevated rounded transition-colors"
+                  className="p-1 hover:bg-cc-base-elevated rounded transition-colors select-none caret-transparent"
+                  aria-label={`Remove ${adj.label} adjustment`}
                 >
                   <Trash2 size={12} className="text-cc-text-low hover:text-cc-danger" />
                 </button>
@@ -140,8 +142,9 @@ export default function FinancialCard({ candidateId, pipeline, accentColor }: Fi
 
         {!showAddAdjustment ? (
           <button
+            type="button"
             onClick={() => setShowAddAdjustment(true)}
-            className="mt-3 font-mono text-[10px] font-medium uppercase tracking-[0.04em] text-cc-warm-primary hover:text-cc-warm-primary-hover transition-colors flex items-center gap-1"
+            className="mt-3 inline-flex min-h-8 items-center gap-1.5 rounded px-1 font-mono text-[10px] font-medium uppercase tracking-[0.04em] text-cc-warm-primary hover:text-cc-warm-primary-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-warm-primary/40 transition-colors select-none caret-transparent"
           >
             <Plus size={12} /> ADD ADJUSTMENT
           </button>
@@ -149,22 +152,22 @@ export default function FinancialCard({ candidateId, pipeline, accentColor }: Fi
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
-            className="mt-3 space-y-2 bg-cc-base-elevated p-3 rounded"
+            className="mt-3 space-y-2 bg-cc-base-elevated p-3 rounded overflow-hidden"
           >
-            <div className="flex gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input
                 type="number"
                 placeholder="Amount"
                 value={adjAmount}
                 onChange={(e) => setAdjAmount(e.target.value)}
-                className="flex-1 bg-cc-base-deep border border-cc-gridline rounded px-2 py-1.5 text-sm text-cc-text-high font-sans focus:border-cc-warm-primary focus:outline-none"
+                className="min-w-0 w-full bg-cc-base-deep border border-cc-gridline rounded px-2 py-1.5 text-sm text-cc-text-high font-sans focus:border-cc-warm-primary focus:outline-none"
               />
               <input
                 type="text"
                 placeholder="Label"
                 value={adjLabel}
                 onChange={(e) => setAdjLabel(e.target.value)}
-                className="flex-1 bg-cc-base-deep border border-cc-gridline rounded px-2 py-1.5 text-sm text-cc-text-high font-sans focus:border-cc-warm-primary focus:outline-none"
+                className="min-w-0 w-full bg-cc-base-deep border border-cc-gridline rounded px-2 py-1.5 text-sm text-cc-text-high font-sans focus:border-cc-warm-primary focus:outline-none"
               />
             </div>
             <textarea
@@ -175,9 +178,10 @@ export default function FinancialCard({ candidateId, pipeline, accentColor }: Fi
               className="w-full bg-cc-base-deep border border-cc-gridline rounded px-2 py-1.5 text-sm text-cc-text-high font-sans focus:border-cc-warm-primary focus:outline-none resize-none"
             />
             <button
+              type="button"
               onClick={handleAddAdjustment}
               disabled={!adjAmount || !adjLabel || !adjReason}
-              className="w-full py-2 bg-cc-warm-primary text-white font-mono text-[10px] font-semibold uppercase tracking-[0.06em] rounded hover:bg-cc-warm-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full min-h-9 py-2 bg-cc-warm-primary text-white font-mono text-[10px] font-semibold uppercase tracking-[0.06em] rounded hover:bg-cc-warm-primary-hover disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-warm-primary/40 transition-colors select-none caret-transparent"
             >
               APPLY
             </button>

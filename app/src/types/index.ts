@@ -84,7 +84,6 @@ export interface FilterChip {
 export interface AppSettings {
   bgvTeamEmail: string;
   orgName: string;
-  contactEmails: string[];
   courses: string[];
   branches: string[];
   googleSheetLinks: {

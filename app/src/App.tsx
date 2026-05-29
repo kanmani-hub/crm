@@ -7,6 +7,7 @@ import SettingsPage from './pages/Settings';
 import NewRegistrationForm from './pages/NewRegistrationForm';
 import BGVForm from './pages/BGVForm';
 import { useStore } from './store/useStore';
+import LoginPage from './pages/Login';
 
 function PageTransition({ children }: { children: React.ReactNode }) {
   return (
@@ -21,6 +22,17 @@ function PageTransition({ children }: { children: React.ReactNode }) {
   );
 }
 
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const isAuthenticated = useStore((state) => state.isAuthenticated);
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
+}
+
 export default function App() {
   const location = useLocation();
   const isExternalForm = location.pathname.startsWith('/form/');
@@ -29,6 +41,10 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('theme-sunny', themeMode === 'sunny');
   }, [themeMode]);
+
+  useEffect(() => {
+    useStore.getState().fetchInitialData();
+  }, []);
 
   // External forms don't use page transitions (they have their own theme)
   if (isExternalForm) {
@@ -43,11 +59,12 @@ export default function App() {
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
-        <Route path="/" element={<PageTransition><Dashboard /></PageTransition>} />
+        <Route path="/login" element={<PageTransition><LoginPage /></PageTransition>} />
+        <Route path="/" element={<ProtectedRoute><PageTransition><Dashboard /></PageTransition></ProtectedRoute>} />
         <Route path="/search" element={<Navigate to="/" replace />} />
-        <Route path="/candidate/:id" element={<PageTransition><CandidateProfile /></PageTransition>} />
-        <Route path="/settings" element={<PageTransition><SettingsPage /></PageTransition>} />
-        <Route path="*" element={<PageTransition><Dashboard /></PageTransition>} />
+        <Route path="/candidate/:id" element={<ProtectedRoute><PageTransition><CandidateProfile /></PageTransition></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><PageTransition><SettingsPage /></PageTransition></ProtectedRoute>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>
   );

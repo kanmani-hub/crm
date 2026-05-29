@@ -1,11 +1,16 @@
 node_modules/
 app/node_modules/
+server/node_modules/
+bin/
 dist/
 app/dist/
 dist-ssr/
 *.log
 *.local
+.env
+server/.env
 .DS_Store
 .idea/
 .vscode/*
 !.vscode/extensions.json
+~$*

@@ -11,5 +11,19 @@
   <body class="bg-cc-base-deep text-cc-text-high">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      window.addEventListener('error', function(e) {
+        var div = document.createElement('div');
+        div.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:white;color:red;z-index:9999;padding:20px;font-family:monospace;white-space:pre-wrap;';
+        div.textContent = 'Error: ' + e.error?.message + '\n\n' + e.error?.stack;
+        document.body.appendChild(div);
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        var div = document.createElement('div');
+        div.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:white;color:red;z-index:9999;padding:20px;font-family:monospace;white-space:pre-wrap;';
+        div.textContent = 'Unhandled Rejection: ' + e.reason?.message + '\n\n' + e.reason?.stack;
+        document.body.appendChild(div);
+      });
+    </script>
   </body>
 </html>

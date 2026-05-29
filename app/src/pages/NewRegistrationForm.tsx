@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useParams } from 'react-router';
+import { sheetsApi } from '@/services/sheetsApi';
 
 const courses = ['Python Full Stack', 'Data Science', 'Machine Learning', 'Web Development', 'Other'];
 const branches = ['Main Branch', 'Online', 'Branch A', 'Branch B'];
@@ -54,9 +55,18 @@ export default function NewRegistrationForm() {
   const handleSubmit = async () => {
     if (!validate()) return;
     setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    setIsSubmitting(false);
-    setSubmitted(true);
+    try {
+      await sheetsApi.appendRegistration({
+        ...formData,
+        token: token || ''
+      });
+      setSubmitted(true);
+    } catch (error) {
+      console.error('Submission failed', error);
+      alert('Failed to submit registration. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const inputClass = (field: string) =>

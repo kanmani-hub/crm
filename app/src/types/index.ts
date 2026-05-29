@@ -96,6 +96,8 @@ export interface FilterChip {
 
 export interface AppSettings {
   bgvTeamEmail: string;
+  hrCCEmail: string;
+  gasWebAppUrl: string;
   orgName: string;
   contactEmails: string[];
   courses: string[];

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Trash2 } from 'lucide-react';
+import { sheetsApi } from '@/services/sheetsApi';
 
 interface CompanyEntry {
   name: string;
@@ -91,9 +92,19 @@ export default function BGVForm() {
   const handleSubmit = async () => {
     if (!validate()) return;
     setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    setIsSubmitting(false);
-    setSubmitted(true);
+    try {
+      await sheetsApi.appendBGV({
+        ...formData,
+        candidateId: '', // Would normally come from token decoding
+        token: '' // If token is available in scope
+      });
+      setSubmitted(true);
+    } catch (error) {
+      console.error('Submission failed', error);
+      alert('Failed to submit BGV form. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const inputClass = (field: string) =>

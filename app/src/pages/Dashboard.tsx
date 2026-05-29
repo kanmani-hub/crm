@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, FileText, Shield, Send, ClipboardList, Clock, Pencil, Check, X, Plus } from 'lucide-react';
+import { Mail, FileText, Shield, Send, ClipboardList, Clock, Pencil, Check, X, Plus, Download, Database } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import type { PayloadType, TrackedStatus } from '@/types';
 import TopNavigationBar from '@/components/TopNavigationBar';
@@ -8,6 +8,8 @@ import CandidateSearchPanel from '@/components/CandidateSearchPanel';
 import Toast from '@/components/Toast';
 import ModalWindow from '@/components/ModalWindow';
 import StatusBadge from '@/components/StatusBadge';
+import DashboardReports from '@/components/DashboardReports';
+import { exportCandidatesToExcel, exportFinancialLedgerToExcel, exportAuditLogsToExcel } from '@/lib/exportUtils';
 
 const toggles: { type: PayloadType; label: string; icon: typeof FileText; color: string }[] = [
   { type: 'new-registration', label: 'NEW REG FORM', icon: FileText, color: '#B85C3D' },
@@ -16,7 +18,7 @@ const toggles: { type: PayloadType; label: string; icon: typeof FileText; color:
 ];
 
 export default function Dashboard() {
-  const { trackedCandidates, settings, updateSettings, addTrackedCandidate, updateTrackedStatus, showToast } = useStore();
+  const { candidates, auditLogs, trackedCandidates, settings, updateSettings, addTrackedCandidate, updateTrackedStatus, showToast } = useStore();
   const [email, setEmail] = useState('');
   const [selectedToggle, setSelectedToggle] = useState<PayloadType>('new-registration');
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
@@ -110,6 +112,45 @@ export default function Dashboard() {
     showToast('Contact updated');
   };
 
+  const submitToGoogleWindow = (toEmail: string, ccEmail: string, formType: string, formLink: string) => {
+    if (!settings.gasWebAppUrl) {
+      throw new Error('MISSING_GAS_URL');
+    }
+
+    const GAS_WINDOW_NAME = 'pycrm_google_send';
+    const sendWindow = window.open('', GAS_WINDOW_NAME);
+    
+    if (!sendWindow) {
+      throw new Error('POPUP_BLOCKED');
+    }
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = settings.gasWebAppUrl;
+    form.target = GAS_WINDOW_NAME;
+    form.style.cssText = 'position:absolute;width:0;height:0;visibility:hidden;';
+
+    const addField = (key: string, value: string) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = value;
+      form.appendChild(input);
+    };
+
+    addField('to', toEmail);
+    addField('cc', ccEmail);
+    addField('formType', formType);
+    addField('formLink', formLink);
+
+    document.body.appendChild(form);
+    form.submit();
+
+    setTimeout(() => {
+      if (form.parentNode) form.remove();
+    }, 1000);
+  };
+
   const handleSend = async () => {
     if (!email.trim()) {
       setEmailError('Please enter an email address');
@@ -127,28 +168,51 @@ export default function Dashboard() {
     setContactError('');
     setIsSending(true);
 
-    // Simulate async dispatch
-    await new Promise((r) => setTimeout(r, 800));
+    try {
+      if (selectedToggle === 'new-registration') {
+        const formLink = settings.googleSheetLinks.registrations || 'https://forms.gle/7MgUZ5zpj5by5EK37'; 
 
-    addTrackedCandidate({
-      candidateId: `tc_${Date.now()}`,
-      status: (isContactMail ? 'contacts-sent' : 'form-pending') as TrackedStatus,
-      payloadType: selectedToggle,
-      email: email.trim(),
-      contactCount: isContactMail ? selectedContacts.length : undefined,
-      timestamp: new Date().toISOString(),
-    });
+        submitToGoogleWindow(
+          email.trim(), 
+          settings.hrCCEmail, 
+          'Registration', 
+          formLink
+        );
+        showToast('Google opened in new tab to dispatch mail.');
+      } else {
+        // Simulate async dispatch for other types
+        await new Promise((r) => setTimeout(r, 800));
+        showToast(
+          isContactMail
+            ? `${selectedContacts.length} Contacts successfully shared with ${email.trim()}`
+            : `${selectedToggle} link dispatched to ${email.trim()}`
+        );
+      }
 
-    showToast(
-      isContactMail
-        ? `${selectedContacts.length} Contacts successfully shared with ${email.trim()}`
-        : `Form link dispatched to ${email.trim()}`
-    );
-    setEmail('');
-    if (isContactMail) {
-      setSelectedContacts([]);
+      addTrackedCandidate({
+        candidateId: `tc_${Date.now()}`,
+        status: (isContactMail ? 'contacts-sent' : 'form-pending') as TrackedStatus,
+        payloadType: selectedToggle,
+        email: email.trim(),
+        contactCount: isContactMail ? selectedContacts.length : undefined,
+        timestamp: new Date().toISOString(),
+      });
+
+      setEmail('');
+      if (isContactMail) {
+        setSelectedContacts([]);
+      }
+    } catch (err: any) {
+      if (err.message === 'MISSING_GAS_URL') {
+        showToast('Please configure Google Apps Script URL in Settings.', 'error');
+      } else if (err.message === 'POPUP_BLOCKED') {
+        showToast('Popup blocked. Please allow popups to send mail.', 'error');
+      } else {
+        showToast('Failed to dispatch mail.', 'error');
+      }
+    } finally {
+      setIsSending(false);
     }
-    setIsSending(false);
   };
 
   const handleReview = (candidateId: string) => {
@@ -291,6 +355,16 @@ export default function Dashboard() {
         >
           Enter an email to begin a workflow
         </motion.p>
+
+        {/* Dashboard Analytics & Reports */}
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.12 }}
+          className="mb-10 max-w-[800px] mx-auto"
+        >
+          <DashboardReports />
+        </motion.div>
 
         <motion.div
           initial={{ opacity: 0, y: 14 }}
@@ -579,6 +653,61 @@ export default function Dashboard() {
                 ))}
               </AnimatePresence>
             )}
+          </div>
+        </motion.div>
+
+        {/* Data Export Control Center */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.45 }}
+          className="max-w-[800px] mx-auto mt-10"
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <Database size={15} className="text-cc-warm-text" />
+            <span className="section-header">DATA EXPORT CENTER</span>
+          </div>
+
+          <div className="bg-cc-base-surface border border-cc-gridline rounded p-5 shadow-inset-glow">
+            <p className="font-sans text-[13px] text-cc-text-mid mb-4">
+              Download standard candidate roster, financial pipelines ledger, and system security audit trail as Excel spreadsheets.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                onClick={() => {
+                  exportCandidatesToExcel(candidates);
+                  showToast('Candidate roster Excel download started');
+                }}
+                className="flex items-center justify-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary transition-all cursor-pointer"
+              >
+                <Download size={13} />
+                Export Candidates
+              </button>
+              <button
+                onClick={() => {
+                  exportFinancialLedgerToExcel(candidates);
+                  showToast('Financial ledger Excel download started');
+                }}
+                className="flex items-center justify-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary transition-all cursor-pointer"
+              >
+                <Download size={13} />
+                Export Finances
+              </button>
+              <button
+                onClick={() => {
+                  const getCandidateName = (id: string) => {
+                    const c = candidates.find(cand => cand.id === id);
+                    return c ? c.fullName : 'System / Unknown';
+                  };
+                  exportAuditLogsToExcel(auditLogs, getCandidateName);
+                  showToast('Audit trail Excel download started');
+                }}
+                className="flex items-center justify-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary transition-all cursor-pointer"
+              >
+                <Download size={13} />
+                Export Audit Logs
+              </button>
+            </div>
           </div>
         </motion.div>
       </div>

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Candidate, TrackedCandidate, AppSettings, PipelineType, AuditLogEntry, PaymentRecord } from '@/types';
+import { sheetsApi } from '@/services/sheetsApi';
 
 type ThemeMode = 'command' | 'sunny';
 
@@ -20,6 +21,10 @@ interface AppState {
   sidebarOpen: boolean;
   toastMessage: string | null;
   toastType: 'success' | 'error' | 'info';
+  isAuthenticated: boolean;
+  user: { email: string; name: string } | null;
+  loginError: string | null;
+  isFetchingData: boolean;
 
   // Actions
   setSearchQuery: (q: string) => void;
@@ -43,6 +48,9 @@ interface AppState {
   addAuditLog: (log: AuditLogEntry) => void;
   getCandidateById: (id: string) => Candidate | undefined;
   getFilteredCandidates: () => Candidate[];
+  login: (email: string, password: string) => boolean;
+  logout: () => void;
+  fetchInitialData: () => Promise<void>;
 }
 
 const now = new Date();
@@ -230,6 +238,8 @@ const mockLogs: AuditLogEntry[] = [
 
 const defaultSettings: AppSettings = {
   bgvTeamEmail: 'bgv-team@pythonhr.com',
+  hrCCEmail: 'hr@pythonhr.com',
+  gasWebAppUrl: '',
   orgName: 'Python HR',
   contactEmails: [
     'recruiter1@company.com',
@@ -265,6 +275,123 @@ export const useStore = create<AppState>((set, get) => ({
   sidebarOpen: false,
   toastMessage: null,
   toastType: 'success',
+  isAuthenticated: typeof window !== 'undefined' ? localStorage.getItem('pycrm_auth') === 'true' : false,
+  user: typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('pycrm_user') || 'null') : null,
+  loginError: null,
+  isFetchingData: false,
+
+  fetchInitialData: async () => {
+    set({ isFetchingData: true });
+    try {
+      const data = await sheetsApi.fetchAllData();
+      
+      if (data.Master_Candidates) {
+        // Build settings
+        const newSettings = { ...defaultSettings };
+        const appSet = data.App_Settings || [];
+        appSet.forEach((s: any) => {
+          if (s.settingKey === 'orgName') newSettings.orgName = s.settingValue;
+          if (s.settingKey === 'bgvTeamEmail') newSettings.bgvTeamEmail = s.settingValue;
+          if (s.settingKey === 'hrCCEmail') newSettings.hrCCEmail = s.settingValue;
+          if (s.settingKey === 'gasWebAppUrl') newSettings.gasWebAppUrl = s.settingValue;
+        });
+        const courses = data.Courses_Dropdown?.filter((c:any) => c.active).sort((a:any,b:any) => a.sortOrder - b.sortOrder).map((c:any) => c.label) || [];
+        if (courses.length > 0) newSettings.courses = courses;
+        const branches = data.Branches_Dropdown?.filter((b:any) => b.active).sort((a:any,b:any) => a.sortOrder - b.sortOrder).map((b:any) => b.label) || [];
+        if (branches.length > 0) newSettings.branches = branches;
+
+        // Build Candidates
+        const rawCandidates = data.Master_Candidates || [];
+        const rawDocs = data.Candidate_Documents || [];
+        const rawEmp = data.Candidate_Employment || [];
+        const rawFin = data.Financial_Ledger || [];
+        const rawFinAdj = data.Financial_Adjustments || [];
+        
+        const mappedCandidates: Candidate[] = rawCandidates.map((c: any) => {
+          // Documents
+          const cDocs = rawDocs.filter((d: any) => d.candidateId === c.candidateId);
+          const docsRec: any = {};
+          const docsApp: any = {};
+          cDocs.forEach((d: any) => {
+            docsRec[d.documentKey] = String(d.received).toLowerCase() === 'true';
+            docsApp[d.documentKey] = String(d.applied).toLowerCase() === 'true';
+          });
+          
+          // Employment
+          const cEmp = rawEmp.filter((e: any) => e.candidateId === c.candidateId).sort((a:any,b:any) => a.sortOrder - b.sortOrder).map((e:any) => e.companyName);
+          
+          // Financials
+          const cFin = rawFin.filter((f: any) => f.candidateId === c.candidateId);
+          const mappedFin = cFin.map((f: any) => {
+            const adj = rawFinAdj.filter((a: any) => a.candidateId === c.candidateId && a.pipelineType === f.pipelineType);
+            return {
+              pipelineType: f.pipelineType,
+              baseFee: f.baseFee || 0,
+              paidToDate: f.paidToDate || 0,
+              adjustments: adj.map((a:any) => ({ id: a.adjustmentId, amount: a.amount, label: a.label, reason: a.reason, createdAt: a.createdAt, userStamp: a.userStamp }))
+            };
+          });
+
+          return {
+            id: c.candidateId,
+            fullName: c.fullName,
+            email: c.email,
+            phone: c.phone,
+            batchName: c.batchName,
+            dateOfBirth: c.dateOfBirth,
+            address: c.address,
+            branch: c.branch,
+            course: c.course,
+            dateOfJoining: c.dateOfJoining,
+            currentStatus: c.currentStatus || 'active',
+            bgvStatus: c.bgvStatus || 'pending',
+            placed: String(c.placed).toLowerCase() === 'true',
+            placedCompany: c.placedCompany || undefined,
+            trackedStatus: c.trackedStatus || undefined,
+            trackedAt: c.trackedAt || undefined,
+            pastEmployment: cEmp,
+            documentsReceived: docsRec,
+            documentsApplied: docsApp,
+            financials: mappedFin.length ? mappedFin : createDefaultFinancials()
+          };
+        });
+
+        // Audit Logs & Tracked
+        const mappedLogs = (data.System_Audit_Logs || []).map((l: any) => ({
+          id: l.logId, candidateId: l.candidateId, logType: l.logType, description: l.description, reason: l.reason, userStamp: l.userStamp, timestamp: l.timestamp
+        }));
+        
+        const mappedTracked = (data.Tracked_Candidates || []).map((t: any) => ({
+          candidateId: t.candidateId, status: t.status, payloadType: t.payloadType, email: t.email, name: t.name, contactCount: t.contactCount, timestamp: t.timestamp
+        }));
+
+        const mappedPayments = (data.Payment_Records || []).map((p: any) => ({
+          id: p.paymentId, candidateId: p.candidateId, pipelineType: p.pipelineType, amount: p.amount, transactionRef: p.transactionRef, notes: p.notes, timestamp: p.timestamp, userStamp: p.userStamp
+        }));
+
+        set({
+          candidates: mappedCandidates,
+          auditLogs: mappedLogs,
+          trackedCandidates: mappedTracked,
+          paymentRecords: mappedPayments,
+          settings: newSettings
+        });
+        
+        console.log("Successfully mapped relational database!");
+      } else {
+        console.log("Database schema missing tables, falling back to mocks.");
+        set({
+          candidates: mockCandidates,
+          auditLogs: mockLogs,
+          settings: defaultSettings
+        });
+      }
+    } catch (err) {
+      console.error("Failed to fetch from proxy server:", err);
+    } finally {
+      set({ isFetchingData: false });
+    }
+  },
 
   setSearchQuery: (q) => set({ searchQuery: q }),
   clearSearchQuery: () => set({ searchQuery: '' }),
@@ -370,5 +497,27 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     return results;
+  },
+
+  login: (email, password) => {
+    if (email.trim().toLowerCase() === 'admin@pythonhr.com' && password === 'admin123') {
+      const userData = { email: email.trim().toLowerCase(), name: 'Python HR Admin' };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pycrm_auth', 'true');
+        localStorage.setItem('pycrm_user', JSON.stringify(userData));
+      }
+      set({ isAuthenticated: true, user: userData, loginError: null });
+      return true;
+    }
+    set({ loginError: 'Invalid email or password' });
+    return false;
+  },
+
+  logout: () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('pycrm_auth');
+      localStorage.removeItem('pycrm_user');
+    }
+    set({ isAuthenticated: false, user: null, loginError: null });
   },
 }));

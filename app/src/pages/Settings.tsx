@@ -107,6 +107,21 @@ export default function SettingsPage() {
                 value={formSettings.bgvTeamEmail}
                 onChange={(value) => updateField('bgvTeamEmail', value)}
               />
+              <SettingsInput
+                label="HR CC Mail ID (Registration)"
+                type="email"
+                value={formSettings.hrCCEmail}
+                hint="Receives copies of dispatched registration forms"
+                onChange={(value) => updateField('hrCCEmail', value)}
+              />
+              <SettingsInput
+                label="Google Apps Script Web App URL"
+                type="url"
+                value={formSettings.gasWebAppUrl}
+                hint="Required for sending form links without backend server"
+                placeholder="https://script.google.com/macros/s/.../exec"
+                onChange={(value) => updateField('gasWebAppUrl', value)}
+              />
             </div>
 
             <div className="mt-8">

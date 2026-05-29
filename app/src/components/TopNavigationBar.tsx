@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { Menu, Moon, Search, Sun, X } from 'lucide-react';
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -7,12 +7,17 @@ import CandidateSearchPanel from './CandidateSearchPanel';
 
 export default function TopNavigationBar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const { themeMode, toggleThemeMode } = useStore();
+  const { themeMode, toggleThemeMode, user, logout } = useStore();
   const isSunny = themeMode === 'sunny';
   const isActive = (path: string) => location.pathname === path;
+
+  const userInitials = user 
+    ? user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
+    : 'HR';
 
   return (
     <>
@@ -70,13 +75,18 @@ export default function TopNavigationBar() {
               <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
                 className="w-7 h-7 rounded-full bg-cc-base-surface border border-cc-gridline flex items-center justify-center font-mono text-[10px] uppercase tracking-wider text-cc-text-mid hover:text-cc-text-high hover:border-cc-text-mid transition-colors"
+                title={user?.name || 'User Profile'}
               >
-                HR
+                {userInitials}
               </button>
               {dropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
-                  <div className="absolute right-0 top-9 z-50 w-40 bg-cc-base-surface border border-cc-gridline rounded shadow-panel py-1">
+                  <div className="absolute right-0 top-9 z-50 w-48 bg-cc-base-surface border border-cc-gridline rounded shadow-panel py-1">
+                    <div className="px-4 py-2 border-b border-cc-gridline/40">
+                      <p className="font-mono text-[10px] text-cc-text-low truncate uppercase tracking-wider">Logged in as</p>
+                      <p className="font-sans text-xs font-semibold text-cc-text-high truncate">{user?.name || 'HR Admin'}</p>
+                    </div>
                     <Link
                       to="/settings"
                       onClick={() => setDropdownOpen(false)}
@@ -84,7 +94,14 @@ export default function TopNavigationBar() {
                     >
                       Settings
                     </Link>
-                    <button className="w-full text-left px-4 py-2 text-sm text-cc-text-mid hover:text-cc-text-high hover:bg-cc-base-elevated transition-colors">
+                    <button
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        logout();
+                        navigate('/login', { replace: true });
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-cc-text-mid hover:text-cc-danger hover:bg-cc-base-elevated transition-colors cursor-pointer"
+                    >
                       Sign Out
                     </button>
                   </div>

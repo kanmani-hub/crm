@@ -170,6 +170,7 @@ addSheet('Branches_Dropdown', [
 addSheet('App_Settings', [
   { settingKey: 'orgName', settingValue: 'Python HR', notes: 'Displayed on public forms and settings', updatedAt: '2025-01-01' },
   { settingKey: 'bgvTeamEmail', settingValue: 'bgv-team@pythonhr.com', notes: 'BGV team mail id used by dispatch flow', updatedAt: '2025-01-01' },
+  { settingKey: 'gasWebAppUrl', settingValue: 'https://script.google.com/macros/s/AKfycby7pYr1H1qy64W2_fiU_r3ezU3wgZ6cW6cfhDRqkK9TRsNjvTI3W1hMKv5QlXvEoiD2mA/exec', notes: 'Required for sending form links without backend server', updatedAt: '2025-01-01' },
   { settingKey: 'themeMode', settingValue: 'command', notes: 'UI preference only; app may persist this locally', updatedAt: '2025-01-01' }
 ]);
 

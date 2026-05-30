@@ -239,7 +239,7 @@ const mockLogs: AuditLogEntry[] = [
 const defaultSettings: AppSettings = {
   bgvTeamEmail: 'bgv-team@pythonhr.com',
   hrCCEmail: 'hr@pythonhr.com',
-  gasWebAppUrl: '',
+  gasWebAppUrl: 'https://script.google.com/macros/s/AKfycby7pYr1H1qy64W2_fiU_r3ezU3wgZ6cW6cfhDRqkK9TRsNjvTI3W1hMKv5QlXvEoiD2mA/exec',
   orgName: 'Python HR',
   contactEmails: [
     'recruiter1@company.com',

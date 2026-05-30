@@ -179,6 +179,16 @@ export default function Dashboard() {
           formLink
         );
         showToast('Google opened in new tab to dispatch mail.');
+      } else if (selectedToggle === 'bgv-form') {
+        const formLink = settings.googleSheetLinks.bgvResponses || 'https://forms.gle/7MgUZ5zpj5by5EK37'; 
+
+        submitToGoogleWindow(
+          email.trim(), 
+          settings.hrCCEmail, 
+          'BGV', 
+          formLink
+        );
+        showToast('Google opened in new tab to dispatch BGV mail.');
       } else {
         // Simulate async dispatch for other types
         await new Promise((r) => setTimeout(r, 800));
@@ -191,7 +201,7 @@ export default function Dashboard() {
 
       addTrackedCandidate({
         candidateId: `tc_${Date.now()}`,
-        status: (isContactMail ? 'contacts-sent' : 'form-pending') as TrackedStatus,
+        status: (selectedToggle === 'bgv-form' ? 'bgv-submitted' : isContactMail ? 'contacts-sent' : 'form-pending') as TrackedStatus,
         payloadType: selectedToggle,
         email: email.trim(),
         contactCount: isContactMail ? selectedContacts.length : undefined,

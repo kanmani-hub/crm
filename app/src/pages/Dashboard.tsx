@@ -8,7 +8,6 @@ import CandidateSearchPanel from '@/components/CandidateSearchPanel';
 import Toast from '@/components/Toast';
 import ModalWindow from '@/components/ModalWindow';
 import StatusBadge from '@/components/StatusBadge';
-import DashboardReports from '@/components/DashboardReports';
 import { exportCandidatesToExcel, exportFinancialLedgerToExcel, exportAuditLogsToExcel } from '@/lib/exportUtils';
 
 const toggles: { type: PayloadType; label: string; icon: typeof FileText; color: string }[] = [
@@ -345,381 +344,396 @@ export default function Dashboard() {
         )}
       </ModalWindow>
 
-      <div className="max-w-[960px] mx-auto px-4 lg:px-6 py-10">
-        {/* Page Title */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-2"
-        >
-          <h1 className="font-mono text-[clamp(1.75rem,3vw,2.25rem)] font-light leading-tight tracking-[-0.02em] text-cc-text-high">
+      <div className="max-w-[1360px] mx-auto px-4 lg:px-8 py-10">
+        {/* Page Title & Subtitle */}
+        <div className="text-center mb-8">
+          <motion.h1
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="font-mono text-[clamp(1.75rem,3.5vw,2.5rem)] font-light leading-tight tracking-[-0.03em] text-cc-text-high"
+          >
             COMMAND CENTER
-          </h1>
-        </motion.div>
-        <motion.p
+          </motion.h1>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="font-sans text-[13px] text-cc-text-mid mt-2"
+          >
+            Enter an email to begin a workflow or search candidate profiles below.
+          </motion.p>
+        </div>
+
+        {/* Global Prominent Search Panel */}
+        <motion.div
           initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="text-center font-sans text-[13px] text-cc-text-mid mb-6"
-        >
-          Enter an email to begin a workflow
-        </motion.p>
-
-        {/* Dashboard Analytics & Reports */}
-        <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, delay: 0.12 }}
-          className="mb-10 max-w-[800px] mx-auto"
-        >
-          <DashboardReports />
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.15 }}
-          className="mb-10"
+          className="mb-8 w-full max-w-[1000px] mx-auto"
         >
           <CandidateSearchPanel />
         </motion.div>
 
-        {/* Push Panel */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          className="max-w-[800px] mx-auto"
-        >
-          <div className="bg-cc-base-surface border border-cc-gridline rounded p-5 shadow-inset-glow">
-            {/* Email Input */}
-            <div className="relative">
-              <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-cc-text-mid" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); setEmailError(''); }}
-                placeholder="Enter candidate email address..."
-                className={`w-full h-12 bg-cc-base-elevated border rounded pl-11 pr-4 font-sans text-[15px] text-cc-text-high placeholder:text-cc-text-mid focus:outline-none transition-colors ${emailError ? 'border-cc-danger' : 'border-cc-gridline focus:border-cc-warm-primary'}`}
-                onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSend(); }}
-                disabled={isSending}
-              />
-            </div>
-            {emailError && <p className="mt-1.5 micro-text text-cc-danger">{emailError}</p>}
+        {/* Two-Column Widescreen Dashboard Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-10 items-start">
+          {/* Main Action Console (Left Column) */}
+          <div className="lg:col-span-2 space-y-8">
+            {/* Push Panel */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
+            >
+              <div className="bg-cc-base-surface border border-cc-gridline rounded-lg p-6 shadow-2xl relative overflow-hidden backdrop-blur-md">
+                <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-cc-gridline/50">
+                  <Send size={15} className="text-cc-warm-text" />
+                  <span className="section-header">DISPATCH NEW WORKFLOW</span>
+                </div>
+                
+                {/* Email Input */}
+                <div className="relative mt-2">
+                  <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-cc-text-mid" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => { setEmail(e.target.value); setEmailError(''); }}
+                    placeholder="Enter candidate email address..."
+                    className={`w-full h-12 bg-cc-base-elevated border rounded pl-11 pr-4 font-sans text-[15px] text-cc-text-high placeholder:text-cc-text-mid focus:outline-none transition-colors ${emailError ? 'border-cc-danger' : 'border-cc-gridline focus:border-cc-warm-primary'}`}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSend(); }}
+                    disabled={isSending}
+                  />
+                </div>
+                {emailError && <p className="mt-1.5 micro-text text-cc-danger">{emailError}</p>}
 
-            <AnimatePresence initial={false}>
-              {isContactMail && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0, y: -8 }}
-                  animate={{ opacity: 1, height: 'auto', y: 0 }}
-                  exit={{ opacity: 0, height: 0, y: -8 }}
-                  transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                  className="overflow-hidden"
-                >
-                  <div className="mt-4 rounded border border-[rgba(91,168,124,0.18)] bg-[rgba(91,168,124,0.06)] p-4">
-                    <div className="flex items-center justify-between gap-3 mb-3">
-                      <span className="section-header">LIVE CONTACT POOL</span>
-                      <span className="micro-text text-cc-text-mid">
-                        {selectedContacts.length} selected
-                      </span>
-                    </div>
+                <AnimatePresence initial={false}>
+                  {isContactMail && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0, y: -8 }}
+                      animate={{ opacity: 1, height: 'auto', y: 0 }}
+                      exit={{ opacity: 0, height: 0, y: -8 }}
+                      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-4 rounded border border-[rgba(91,168,124,0.18)] bg-[rgba(91,168,124,0.06)] p-4">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                          <span className="section-header">LIVE CONTACT POOL</span>
+                          <span className="micro-text text-cc-text-mid">
+                            {selectedContacts.length} selected
+                          </span>
+                        </div>
 
-                    <div className="space-y-2">
-                      {settings.contactEmails.map((contactEmail) => {
-                        const isChecked = selectedContacts.includes(contactEmail);
-                        const isEditing = editingContact === contactEmail;
+                        <div className="space-y-2">
+                          {settings.contactEmails.map((contactEmail) => {
+                            const isChecked = selectedContacts.includes(contactEmail);
+                            const isEditing = editingContact === contactEmail;
 
-                        return (
-                          <div
-                            key={contactEmail}
-                            role="checkbox"
-                            aria-checked={isChecked}
-                            tabIndex={isEditing || isSending ? -1 : 0}
-                            onClick={() => { if (!isEditing && !isSending) toggleContact(contactEmail); }}
-                            onKeyDown={(e) => {
-                              if ((e.key === 'Enter' || e.key === ' ') && !isEditing && !isSending) {
-                                e.preventDefault();
-                                toggleContact(contactEmail);
-                              }
-                            }}
-                            className={`flex items-center gap-2 rounded border px-3 py-2 transition-all ${
-                              isChecked
-                                ? 'border-cc-green bg-[rgba(91,168,124,0.14)]'
-                                : 'border-cc-gridline bg-cc-base-elevated hover:border-[rgba(91,168,124,0.45)] hover:bg-[rgba(91,168,124,0.08)]'
-                            } ${isEditing || isSending ? '' : 'cursor-pointer'}`}
-                          >
-                            <div className={`h-5 w-5 flex-shrink-0 rounded-sm border inline-flex items-center justify-center transition-colors ${
-                              isChecked
-                                ? 'bg-cc-green border-cc-green text-white'
-                                : 'bg-cc-base-surface border-cc-gridline text-transparent'
-                            }`}>
-                              <Check size={13} />
-                            </div>
-
-                            {isEditing ? (
-                              <input
-                                type="email"
-                                value={editingValue}
-                                onChange={(e) => setEditingValue(e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
+                            return (
+                              <div
+                                key={contactEmail}
+                                role="checkbox"
+                                aria-checked={isChecked}
+                                tabIndex={isEditing || isSending ? -1 : 0}
+                                onClick={() => { if (!isEditing && !isSending) toggleContact(contactEmail); }}
                                 onKeyDown={(e) => {
-                                  e.stopPropagation();
-                                  if (e.key === 'Enter') saveEditedContact();
-                                  if (e.key === 'Escape') cancelEditContact();
+                                  if ((e.key === 'Enter' || e.key === ' ') && !isEditing && !isSending) {
+                                    e.preventDefault();
+                                    toggleContact(contactEmail);
+                                  }
                                 }}
-                                className="min-w-0 flex-1 h-8 bg-cc-base-surface border border-cc-gridline rounded px-2 font-sans text-[13px] text-cc-text-high focus:border-cc-warm-primary focus:outline-none"
-                                autoFocus
-                              />
-                            ) : (
-                              <span className="min-w-0 flex-1 truncate font-sans text-[13px] text-cc-text-high">
-                                {contactEmail}
-                              </span>
-                            )}
-
-                            {isEditing ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); saveEditedContact(); }}
-                                  disabled={isSending}
-                                  className="h-7 w-7 inline-flex items-center justify-center rounded text-cc-green hover:bg-[rgba(91,168,124,0.12)] transition-colors"
-                                  aria-label="Save contact"
-                                >
-                                  <Check size={14} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); cancelEditContact(); }}
-                                  disabled={isSending}
-                                  className="h-7 w-7 inline-flex items-center justify-center rounded text-cc-text-mid hover:text-cc-danger hover:bg-[rgba(201,75,75,0.1)] transition-colors"
-                                  aria-label="Cancel contact edit"
-                                >
-                                  <X size={14} />
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); startEditContact(contactEmail); }}
-                                disabled={isSending}
-                                className="h-7 w-7 inline-flex items-center justify-center rounded text-cc-text-mid hover:text-cc-warm-text hover:bg-[rgba(199,178,153,0.08)] transition-colors"
-                                aria-label={`Edit ${contactEmail}`}
+                                className={`flex items-center gap-2 rounded border px-3 py-2 transition-all ${
+                                  isChecked
+                                    ? 'border-cc-green bg-[rgba(91,168,124,0.14)]'
+                                    : 'border-cc-gridline bg-cc-base-elevated hover:border-[rgba(91,168,124,0.45)] hover:bg-[rgba(91,168,124,0.08)]'
+                                } ${isEditing || isSending ? '' : 'cursor-pointer'}`}
                               >
-                                <Pencil size={13} />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                                <div className={`h-5 w-5 flex-shrink-0 rounded-sm border inline-flex items-center justify-center transition-colors ${
+                                  isChecked
+                                    ? 'bg-cc-green border-cc-green text-white'
+                                    : 'bg-cc-base-surface border-cc-gridline text-transparent'
+                                }`}>
+                                  <Check size={13} />
+                                </div>
 
-                    <div className="mt-3 flex gap-2">
-                      <input
-                        type="email"
-                        value={newContactEmail}
-                        onChange={(e) => { setNewContactEmail(e.target.value); setContactError(''); }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddContact(); }}
-                        placeholder="Add contact email..."
-                        disabled={isSending}
-                        className="min-w-0 flex-1 h-10 bg-cc-base-elevated border border-cc-gridline rounded px-3 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-mid focus:border-cc-warm-primary focus:outline-none transition-colors"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddContact}
-                        disabled={isSending}
-                        className="inline-flex items-center gap-1.5 h-10 px-3 rounded bg-cc-green text-white font-mono text-[10px] font-semibold uppercase tracking-[0.06em] hover:brightness-110 disabled:opacity-60 transition-all"
-                      >
-                        <Plus size={14} />
-                        Add Contact
-                      </button>
-                    </div>
-                    {contactError && <p className="mt-2 micro-text text-cc-danger">{contactError}</p>}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                                {isEditing ? (
+                                  <input
+                                    type="email"
+                                    value={editingValue}
+                                    onChange={(e) => setEditingValue(e.target.value)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onKeyDown={(e) => {
+                                      e.stopPropagation();
+                                      if (e.key === 'Enter') saveEditedContact();
+                                      if (e.key === 'Escape') cancelEditContact();
+                                    }}
+                                    className="min-w-0 flex-1 h-8 bg-cc-base-surface border border-cc-gridline rounded px-2 font-sans text-[13px] text-cc-text-high focus:border-cc-warm-primary focus:outline-none"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <span className="min-w-0 flex-1 truncate font-sans text-[13px] text-cc-text-high">
+                                    {contactEmail}
+                                  </span>
+                                )}
 
-            {/* Toggles + Send */}
-            <div className="flex flex-wrap items-center gap-3 mt-4">
-              {toggles.map((t) => {
-                const Icon = t.icon;
-                const isActive = selectedToggle === t.type;
-                return (
-                  <button
-                    key={t.type}
-                    onClick={() => setSelectedToggle(t.type)}
-                    className="flex items-center gap-2 px-3.5 py-2 rounded font-mono text-[10px] font-medium tracking-[0.06em] uppercase transition-all duration-200"
-                    style={{
-                      backgroundColor: isActive ? t.color : '#22262E',
-                      border: `1px solid ${isActive ? t.color : '#2A3038'}`,
-                      color: isActive ? '#FFFFFF' : '#8A9AAD',
-                    }}
-                  >
-                    <Icon size={16} />
-                    {t.label}
-                  </button>
-                );
-              })}
+                                {isEditing ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); saveEditedContact(); }}
+                                      disabled={isSending}
+                                      className="h-7 w-7 inline-flex items-center justify-center rounded text-cc-green hover:bg-[rgba(91,168,124,0.12)] transition-colors"
+                                      aria-label="Save contact"
+                                    >
+                                      <Check size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); cancelEditContact(); }}
+                                      disabled={isSending}
+                                      className="h-7 w-7 inline-flex items-center justify-center rounded text-cc-text-mid hover:text-cc-danger hover:bg-[rgba(201,75,75,0.1)] transition-colors"
+                                      aria-label="Cancel contact edit"
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); startEditContact(contactEmail); }}
+                                    disabled={isSending}
+                                    className="h-7 w-7 inline-flex items-center justify-center rounded text-cc-text-mid hover:text-cc-warm-text hover:bg-[rgba(199,178,153,0.08)] transition-colors"
+                                    aria-label={`Edit ${contactEmail}`}
+                                  >
+                                    <Pencil size={13} />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
 
-              <div className="flex-1" />
-
-              <button
-                onClick={handleSend}
-                disabled={isSending}
-                className="flex items-center gap-2 h-10 px-7 bg-cc-warm-primary text-white font-mono text-[11px] font-semibold uppercase tracking-[0.08em] rounded hover:bg-cc-warm-primary-hover hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(184,92,61,0.25)] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none transition-all"
-              >
-                <Send size={14} />
-                {isSending ? 'SENDING...' : 'SEND'}
-              </button>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Tracked Candidates List */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3, delay: 0.4 }}
-          className="max-w-[800px] mx-auto mt-6"
-        >
-          {/* Section Header */}
-          <div className="flex items-center gap-3 mb-3">
-            <span className="section-header">TRACKED CANDIDATES</span>
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center font-mono text-[10px] font-semibold ${trackedCandidates.length > 0 ? 'bg-cc-warm-primary text-white' : 'bg-cc-base-elevated-strong text-cc-text-low'}`}>
-              {trackedCandidates.length}
-            </span>
-          </div>
-
-          {/* List */}
-          <div className="bg-cc-base-surface border border-cc-gridline rounded shadow-inset-glow">
-            {trackedCandidates.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16">
-                <ClipboardList size={48} className="text-cc-text-low mb-3" />
-                <p className="font-sans text-[13px] text-cc-text-mid">No tracked candidates</p>
-                <p className="micro-text text-cc-text-low mt-1">Enter an email above to begin tracking</p>
-              </div>
-            ) : (
-              <AnimatePresence>
-                {trackedCandidates.map((tc) => (
-                  <motion.div
-                    key={tc.candidateId}
-                    layout
-                    initial={{ opacity: 0, maxHeight: 0 }}
-                    animate={{ opacity: 1, maxHeight: 80 }}
-                    exit={{ opacity: 0, maxHeight: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="flex items-center px-4 py-3 border-b border-[rgba(42,48,56,0.5)] last:border-b-0 hover:bg-cc-base-elevated transition-colors group"
-                  >
-                    {/* Status Dot */}
-                    <div
-                      className="w-2.5 h-2.5 rounded-full flex-shrink-0 mr-3"
-                      style={{
-                        backgroundColor:
-                          tc.status === 'form-pending' ? '#C9A84C' :
-                          tc.status === 'bgv-submitted' ? '#5B8FBF' :
-                          tc.status === 'contacts-sent' ? '#5BA87C' : '#5BA87C',
-                      }}
-                    />
-
-                    {/* Candidate Info */}
-                    <div className="flex-1 min-w-0 mr-4">
-                      <p className="font-sans text-[13px] font-medium text-cc-text-high truncate max-w-[200px]">
-                        {tc.name || tc.email}
-                      </p>
-                    </div>
-
-                    {/* Status Badge */}
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      {tc.status === 'form-pending' && (
-                        <StatusBadge label="FORM PENDING" variant="amber" />
-                      )}
-                      {tc.status === 'bgv-submitted' && (
-                        <>
-                          <StatusBadge label="REVIEW & SEND" variant="blue" />
+                        <div className="mt-3 flex gap-2">
+                          <input
+                            type="email"
+                            value={newContactEmail}
+                            onChange={(e) => { setNewContactEmail(e.target.value); setContactError(''); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleAddContact(); }}
+                            placeholder="Add contact email..."
+                            disabled={isSending}
+                            className="min-w-0 flex-1 h-10 bg-cc-base-elevated border border-cc-gridline rounded px-3 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-mid focus:border-cc-warm-primary focus:outline-none transition-colors"
+                          />
                           <button
-                            onClick={() => handleReview(tc.candidateId)}
-                            className="px-3 py-1 bg-cc-blue text-white font-mono text-[10px] font-semibold uppercase rounded hover:brightness-110 transition-all"
+                            type="button"
+                            onClick={handleAddContact}
+                            disabled={isSending}
+                            className="inline-flex items-center gap-1.5 h-10 px-3 rounded bg-cc-green text-white font-mono text-[10px] font-semibold uppercase tracking-[0.06em] hover:brightness-110 disabled:opacity-60 transition-all"
                           >
-                            REVIEW
+                            <Plus size={14} />
+                            Add Contact
                           </button>
-                        </>
-                      )}
-                      {tc.status === 'contacts-sent' && (
-                        <>
-                          <StatusBadge label="CONTACTS SENT" variant="green" />
-                          <StatusBadge label={`${tc.contactCount || 0} ENCLOSED`} variant="neutral" />
-                        </>
-                      )}
-                      {tc.status === 'cleared' && (
-                        <StatusBadge label="CLEARED" variant="green" />
-                      )}
-                      <div className="flex items-center gap-1 text-cc-text-low micro-text">
-                        <Clock size={10} />
-                        {getRelativeTime(tc.timestamp)}
+                        </div>
+                        {contactError && <p className="mt-2 micro-text text-cc-danger">{contactError}</p>}
                       </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Toggles + Send */}
+                <div className="flex flex-wrap items-center gap-3 mt-5">
+                  {toggles.map((t) => {
+                    const Icon = t.icon;
+                    const isActive = selectedToggle === t.type;
+                    return (
+                      <button
+                        key={t.type}
+                        onClick={() => setSelectedToggle(t.type)}
+                        className="flex items-center gap-2 px-3.5 py-2.5 rounded font-mono text-[10px] font-medium tracking-[0.06em] uppercase transition-all duration-200"
+                        style={{
+                          backgroundColor: isActive ? t.color : '#22262E',
+                          border: `1px solid ${isActive ? t.color : '#2A3038'}`,
+                          color: isActive ? '#FFFFFF' : '#8A9AAD',
+                        }}
+                      >
+                        <Icon size={16} />
+                        {t.label}
+                      </button>
+                    );
+                  })}
+
+                  <div className="flex-1" />
+
+                  <button
+                    onClick={handleSend}
+                    disabled={isSending}
+                    className="flex items-center gap-2 h-10 px-8 bg-cc-warm-primary text-white font-mono text-[11px] font-semibold uppercase tracking-[0.08em] rounded hover:bg-cc-warm-primary-hover hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(184,92,61,0.25)] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none transition-all"
+                  >
+                    <Send size={14} />
+                    {isSending ? 'SENDING...' : 'SEND'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Data Export Center */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
+            >
+              <div className="bg-cc-base-surface border border-cc-gridline rounded-lg p-6 shadow-2xl relative overflow-hidden backdrop-blur-md">
+                <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-cc-gridline/50">
+                  <Database size={15} className="text-cc-warm-text" />
+                  <span className="section-header">DATA EXPORT CENTER</span>
+                </div>
+
+                <p className="font-sans text-[13px] text-cc-text-mid mb-4">
+                  Download standard candidate roster, financial pipelines ledger, and system security audit trail as Excel spreadsheets.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <button
+                    onClick={() => {
+                      exportCandidatesToExcel(candidates);
+                      showToast('Candidate roster Excel download started');
+                    }}
+                    className="flex items-center justify-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary transition-all cursor-pointer"
+                  >
+                    <Download size={13} />
+                    Export Candidates
+                  </button>
+                  <button
+                    onClick={() => {
+                      exportFinancialLedgerToExcel(candidates);
+                      showToast('Financial ledger Excel download started');
+                    }}
+                    className="flex items-center justify-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary transition-all cursor-pointer"
+                  >
+                    <Download size={13} />
+                    Export Finances
+                  </button>
+                  <button
+                    onClick={() => {
+                      const getCandidateName = (id: string) => {
+                        const c = candidates.find(cand => cand.id === id);
+                        return c ? c.fullName : 'System / Unknown';
+                      };
+                      exportAuditLogsToExcel(auditLogs, getCandidateName);
+                      showToast('Audit trail Excel download started');
+                    }}
+                    className="flex items-center justify-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary transition-all cursor-pointer"
+                  >
+                    <Download size={13} />
+                    Export Audit Logs
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Tracked Candidates (Right Sidebar Column) */}
+          <div className="lg:col-span-1">
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, delay: 0.25 }}
+            >
+              <div className="bg-cc-base-surface border border-cc-gridline rounded-lg p-6 shadow-2xl flex flex-col backdrop-blur-md h-[468px]">
+                {/* Section Header */}
+                <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-cc-gridline/50">
+                  <div className="flex items-center gap-2">
+                    <ClipboardList size={15} className="text-cc-warm-text" />
+                    <span className="section-header">TRACKED CANDIDATES</span>
+                  </div>
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center font-mono text-[10px] font-semibold ${trackedCandidates.length > 0 ? 'bg-cc-warm-primary text-white' : 'bg-cc-base-elevated-strong text-cc-text-low'}`}>
+                    {trackedCandidates.length}
+                  </span>
+                </div>
+
+                {/* List container scrollable */}
+                <div className="flex-1 overflow-y-auto pr-1 -mr-2">
+                  {trackedCandidates.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full py-16 text-center">
+                      <ClipboardList size={40} className="text-cc-text-low mb-3 opacity-60" />
+                      <p className="font-sans text-[13px] text-cc-text-mid">No tracked candidates</p>
+                      <p className="micro-text text-cc-text-low mt-1">Enter an email above to start tracking</p>
                     </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            )}
-          </div>
-        </motion.div>
+                  ) : (
+                    <div className="space-y-3">
+                      <AnimatePresence>
+                        {trackedCandidates.map((tc) => (
+                          <motion.div
+                            key={tc.candidateId}
+                            layout
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ duration: 0.25 }}
+                            className="bg-cc-base-elevated border border-cc-gridline/50 rounded p-3 hover:border-cc-warm-primary/50 transition-all flex flex-col gap-2 relative group"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-sans text-[13px] font-semibold text-cc-text-high truncate flex-1 leading-snug">
+                                {tc.name || tc.email}
+                              </p>
+                              <div
+                                className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1.5"
+                                style={{
+                                  backgroundColor:
+                                    tc.status === 'form-pending' ? '#C9A84C' :
+                                    tc.status === 'bgv-submitted' ? '#5B8FBF' :
+                                    tc.status === 'contacts-sent' ? '#5BA87C' : '#5BA87C',
+                                }}
+                              />
+                            </div>
+                            
+                            {tc.name && (
+                              <p className="micro-text text-cc-text-low truncate -mt-1 leading-none">
+                                {tc.email}
+                              </p>
+                            )}
 
-        {/* Data Export Control Center */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.45 }}
-          className="max-w-[800px] mx-auto mt-10"
-        >
-          <div className="flex items-center gap-3 mb-3">
-            <Database size={15} className="text-cc-warm-text" />
-            <span className="section-header">DATA EXPORT CENTER</span>
+                            <div className="flex items-center justify-between gap-2 mt-1">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {tc.status === 'form-pending' && (
+                                  <StatusBadge label="FORM PENDING" variant="amber" />
+                                )}
+                                {tc.status === 'bgv-submitted' && (
+                                  <StatusBadge label="IN REVIEW" variant="blue" />
+                                )}
+                                {tc.status === 'contacts-sent' && (
+                                  <>
+                                    <StatusBadge label="SENT" variant="green" />
+                                    <StatusBadge label={`${tc.contactCount || 0} ITEMS`} variant="neutral" />
+                                  </>
+                                )}
+                                {tc.status === 'cleared' && (
+                                  <StatusBadge label="CLEARED" variant="green" />
+                                )}
+                              </div>
+                              
+                              <div className="flex items-center gap-2">
+                                {tc.status === 'bgv-submitted' && (
+                                  <button
+                                    onClick={() => handleReview(tc.candidateId)}
+                                    className="px-2 py-0.5 bg-cc-blue text-white font-mono text-[9px] font-semibold uppercase rounded hover:brightness-110 transition-all cursor-pointer"
+                                  >
+                                    REVIEW
+                                  </button>
+                                )}
+                                <div className="flex items-center gap-1 text-cc-text-low micro-text">
+                                  <Clock size={10} />
+                                  <span>{getRelativeTime(tc.timestamp)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
           </div>
-
-          <div className="bg-cc-base-surface border border-cc-gridline rounded p-5 shadow-inset-glow">
-            <p className="font-sans text-[13px] text-cc-text-mid mb-4">
-              Download standard candidate roster, financial pipelines ledger, and system security audit trail as Excel spreadsheets.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <button
-                onClick={() => {
-                  exportCandidatesToExcel(candidates);
-                  showToast('Candidate roster Excel download started');
-                }}
-                className="flex items-center justify-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary transition-all cursor-pointer"
-              >
-                <Download size={13} />
-                Export Candidates
-              </button>
-              <button
-                onClick={() => {
-                  exportFinancialLedgerToExcel(candidates);
-                  showToast('Financial ledger Excel download started');
-                }}
-                className="flex items-center justify-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary transition-all cursor-pointer"
-              >
-                <Download size={13} />
-                Export Finances
-              </button>
-              <button
-                onClick={() => {
-                  const getCandidateName = (id: string) => {
-                    const c = candidates.find(cand => cand.id === id);
-                    return c ? c.fullName : 'System / Unknown';
-                  };
-                  exportAuditLogsToExcel(auditLogs, getCandidateName);
-                  showToast('Audit trail Excel download started');
-                }}
-                className="flex items-center justify-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary transition-all cursor-pointer"
-              >
-                <Download size={13} />
-                Export Audit Logs
-              </button>
-            </div>
-          </div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );

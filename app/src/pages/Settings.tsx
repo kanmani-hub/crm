@@ -23,9 +23,39 @@ export default function SettingsPage() {
   const [formSettings, setFormSettings] = useState<AppSettings>({ ...settings });
   const [newCourse, setNewCourse] = useState('');
   const [newBranch, setNewBranch] = useState('');
+  const [newCCEmail, setNewCCEmail] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  const ccEmailsList = formSettings.hrCCEmail
+    ? formSettings.hrCCEmail
+        .split(',')
+        .map((e) => e.trim())
+        .filter(Boolean)
+    : [];
+
+  const addCCEmail = () => {
+    const trimmed = newCCEmail.trim();
+    if (!trimmed) return;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmed)) {
+      showToast('Enter a valid email address', 'error');
+      return;
+    }
+    if (ccEmailsList.some((email) => email.toLowerCase() === trimmed.toLowerCase())) {
+      showToast('Email already added', 'info');
+      return;
+    }
+    const updatedList = [...ccEmailsList, trimmed];
+    updateField('hrCCEmail', updatedList.join(', '));
+    setNewCCEmail('');
+  };
+
+  const removeCCEmail = (index: number) => {
+    const updatedList = ccEmailsList.filter((_, i) => i !== index);
+    updateField('hrCCEmail', updatedList.join(', '));
+  };
 
   useEffect(() => {
     setHasChanges(JSON.stringify(formSettings) !== JSON.stringify(settings));
@@ -107,13 +137,61 @@ export default function SettingsPage() {
                 value={formSettings.bgvTeamEmail}
                 onChange={(value) => updateField('bgvTeamEmail', value)}
               />
-              <SettingsInput
-                label="HR CC Mail ID (Registration)"
-                type="email"
-                value={formSettings.hrCCEmail}
-                hint="Receives copies of dispatched registration forms"
-                onChange={(value) => updateField('hrCCEmail', value)}
-              />
+              
+              <div className="border-t border-cc-gridline/40 pt-4 mt-2">
+                <label className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-cc-text-mid block mb-1.5">
+                  HR CC Mail IDs (Registration)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={newCCEmail}
+                    placeholder="Add CC email address..."
+                    onChange={(e) => setNewCCEmail(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addCCEmail();
+                      }
+                    }}
+                    className="min-w-0 flex-1 h-10 bg-cc-base-elevated border border-cc-gridline rounded px-3 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-low focus:border-cc-warm-primary focus:outline-none transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={addCCEmail}
+                    className="h-10 w-10 inline-flex items-center justify-center rounded bg-cc-base-elevated border border-cc-gridline text-cc-warm-text hover:border-cc-warm-primary transition-colors"
+                    aria-label="Add CC Email"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+                {ccEmailsList.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2 max-h-[120px] overflow-y-auto pr-1">
+                    {ccEmailsList.map((email, i) => (
+                      <span
+                        key={`${email}-${i}`}
+                        className="inline-flex max-w-full items-center gap-1.5 border rounded-sm px-2 py-0.5 bg-[rgba(184,92,61,0.08)] border-[rgba(184,92,61,0.15)]"
+                      >
+                        <span className="font-mono text-[10px] text-cc-warm-text truncate">{email}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeCCEmail(i)}
+                          className="text-cc-text-low hover:text-cc-danger transition-colors"
+                          aria-label={`Remove ${email}`}
+                        >
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-[11px] text-cc-text-low italic">No CC emails added yet.</p>
+                )}
+                <p className="mt-1 text-[11px] text-cc-text-mid">
+                  Receives copies of dispatched registration forms
+                </p>
+              </div>
+
               <SettingsInput
                 label="Google Apps Script Web App URL"
                 type="url"

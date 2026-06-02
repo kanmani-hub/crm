@@ -20,7 +20,7 @@ export const sheetsApi = {
   /**
    * Generic append function
    */
-  appendRow: async (sheetName: string, values: any[]) => {
+  appendRow: async (sheetName: string, values: any) => {
     try {
       const response = await fetch(`${API_BASE}/append`, {
         method: 'POST',
@@ -38,7 +38,7 @@ export const sheetsApi = {
   /**
    * Generic update function by ID (assumes ID is column A)
    */
-  updateRow: async (sheetName: string, id: string, values: any[]) => {
+  updateRow: async (sheetName: string, id: string, values: any) => {
     try {
       const response = await fetch(`${API_BASE}/update`, {
         method: 'PUT',
@@ -55,52 +55,54 @@ export const sheetsApi = {
 
   // Convenience methods specific to schemas
   appendAuditLog: async (log: AuditLogEntry) => {
-    return sheetsApi.appendRow('Tab3_System_Audit_Logs', [
-      log.id,
-      log.candidateId,
-      log.logType,
-      log.description,
-      log.reason || '',
-      log.userStamp,
-      log.timestamp
-    ]);
+    return sheetsApi.appendRow('Tab3_System_Audit_Logs', {
+      logId: log.id,
+      candidateId: log.candidateId,
+      logType: log.logType,
+      description: log.description,
+      reason: log.reason || '',
+      userStamp: log.userStamp,
+      timestamp: log.timestamp
+    });
   },
   
   appendRegistration: async (data: any) => {
-    return sheetsApi.appendRow('Tab4_Registration_Responses', [
-      `reg_${Date.now()}`,
-      data.fullName,
-      data.email,
-      data.phone,
-      data.dob || '',
-      data.address || '',
-      data.course,
-      data.branch,
-      data.token || '',
-      new Date().toISOString(),
-      'FALSE', // processed
-      '' // candidateId (blank until HR processes)
-    ]);
+    return sheetsApi.appendRow('Tab4_Registration_Responses', {
+      submissionId: `reg_${Date.now()}`,
+      tokenEmail: data.email,
+      fullName: data.fullName,
+      email: data.email,
+      phone: data.phone,
+      dob: data.dob || '',
+      address: data.address || '',
+      course: data.course,
+      branch: data.branch,
+      token: data.token || '',
+      submittedAt: new Date().toISOString(),
+      syncStatus: 'FALSE',
+      candidateId: ''
+    });
   },
 
   appendBGV: async (data: any) => {
-    return sheetsApi.appendRow('Tab5_BGV_Responses', [
-      `bgv_${Date.now()}`,
-      data.candidateId || '',
-      data.aadhar,
-      data.address,
-      data.emergencyContact,
-      JSON.stringify(data.companies || []),
-      data.documents.offerLetter,
-      data.documents.appraisals,
-      data.documents.payslips,
-      data.documents.relievingLetter,
-      data.documents.counterOffer,
-      new Date().toISOString(),
-      'FALSE', // processed
-      'FALSE', // sent to vendor
-      '', // vendor sent at
-      data.token || ''
-    ]);
+    return sheetsApi.appendRow('Tab5_BGV_Responses', {
+      responseId: `bgv_${Date.now()}`,
+      candidateId: data.candidateId || '',
+      fullName: data.fullName || '',
+      email: data.email || '',
+      phone: data.phone || '',
+      aadhar: data.aadhar,
+      currentAddress: data.address,
+      emergencyContact: data.emergencyContact,
+      offerLetter: data.documents.offerLetter,
+      appraisals: data.documents.appraisals,
+      payslips: data.documents.payslips,
+      relievingLetter: data.documents.relievingLetter,
+      counterOffer: data.documents.counterOffer,
+      submittedAt: new Date().toISOString(),
+      reviewStatus: 'in-review',
+      token: data.token || '',
+      companies: data.companies || [] // will be parsed/inserted relationally in backend
+    });
   }
 };

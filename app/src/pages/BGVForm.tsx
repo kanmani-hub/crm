@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Trash2 } from 'lucide-react';
+import { useParams } from 'react-router';
+import { useStore } from '@/store/useStore';
 import { sheetsApi } from '@/services/sheetsApi';
 
 interface CompanyEntry {
@@ -36,6 +38,17 @@ const docItems = [
 ];
 
 export default function BGVForm() {
+  const { token } = useParams();
+  
+  let candidateEmail = '';
+  try {
+    if (token) candidateEmail = atob(token);
+  } catch (e) {
+    console.error('Failed to decode BGV token:', e);
+  }
+
+  const candidate = useStore((s) => s.candidates.find((c) => c.email.toLowerCase() === candidateEmail.toLowerCase()));
+
   const [formData, setFormData] = useState<FormData>({
     aadhar: '',
     address: '',
@@ -95,8 +108,11 @@ export default function BGVForm() {
     try {
       await sheetsApi.appendBGV({
         ...formData,
-        candidateId: '', // Would normally come from token decoding
-        token: '' // If token is available in scope
+        candidateId: candidate?.id || '',
+        fullName: candidate?.fullName || 'Rahul Sharma',
+        email: candidate?.email || 'rahul.sharma@email.com',
+        phone: candidate?.phone || '+91 98765 43210',
+        token: token || ''
       });
       setSubmitted(true);
     } catch (error) {
@@ -153,9 +169,9 @@ export default function BGVForm() {
               <h3 className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#8A8A8A] border-b border-[#E0DCD6] pb-2 mb-4">PERSONAL DETAILS</h3>
               <div className="space-y-3">
                 {[
-                  { label: 'Full Name', value: 'Rahul Sharma', readOnly: true },
-                  { label: 'Email', value: 'rahul.sharma@email.com', readOnly: true },
-                  { label: 'Phone', value: '+91 98765 43210', readOnly: true },
+                  { label: 'Full Name', value: candidate?.fullName || 'Rahul Sharma', readOnly: true },
+                  { label: 'Email', value: candidate?.email || 'rahul.sharma@email.com', readOnly: true },
+                  { label: 'Phone', value: candidate?.phone || '+91 98765 43210', readOnly: true },
                 ].map((field) => (
                   <div key={field.label}>
                     <label className="font-sans text-[13px] font-medium text-[#4A4A4A] block mb-1">{field.label}</label>

@@ -44,6 +44,13 @@ export default function App() {
 
   useEffect(() => {
     useStore.getState().fetchInitialData();
+    
+    // Automatically poll for new data (e.g. from background Google Sheets sync)
+    const interval = setInterval(() => {
+      useStore.getState().fetchInitialData();
+    }, 30000); // 30 seconds
+    
+    return () => clearInterval(interval);
   }, []);
 
   // External forms don't use page transitions (they have their own theme)

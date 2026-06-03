@@ -5,6 +5,7 @@ import { useStore } from '@/store/useStore';
 import type { AppSettings } from '@/types';
 import TopNavigationBar from '@/components/TopNavigationBar';
 import Toast from '@/components/Toast';
+import { sheetsApi } from '@/services/sheetsApi';
 
 type ArraySettingKey = 'courses' | 'branches';
 type SheetLinkKey = keyof AppSettings['googleSheetLinks'];
@@ -63,13 +64,32 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setIsSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
-    updateSettings(formSettings);
-    setIsSaving(false);
-    setSaved(true);
-    showToast('HR settings saved');
-    setTimeout(() => setSaved(false), 3000);
-    setHasChanges(false);
+    try {
+      // Persist to backend Excel database
+      const appSettingsToSave: Record<string, string> = {
+        orgName: formSettings.orgName,
+        bgvTeamEmail: formSettings.bgvTeamEmail,
+        hrCCEmail: formSettings.hrCCEmail,
+        gasWebAppUrl: formSettings.gasWebAppUrl,
+      };
+      const sheetLinksToSave: Record<string, string> = { ...formSettings.googleSheetLinks };
+      
+      await sheetsApi.saveSettings(appSettingsToSave, sheetLinksToSave);
+      
+      updateSettings(formSettings);
+      setSaved(true);
+      showToast('HR settings saved to database');
+      setTimeout(() => setSaved(false), 3000);
+      setHasChanges(false);
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+      // Still update local state even if backend fails
+      updateSettings(formSettings);
+      showToast('Settings saved locally (backend sync failed)', 'error');
+      setHasChanges(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const updateField = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {

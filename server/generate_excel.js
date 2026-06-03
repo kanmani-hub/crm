@@ -184,6 +184,6 @@ addSheet('Sheet_Links', [
   { linkKey: 'settings', label: 'Settings Sheet', googleSheetUrl: null, notes: 'Dropdowns, branches, and app configuration' }
 ]);
 
-const filePath = path.join(__dirname, 'pycrm_database.xlsx');
+const filePath = path.join(__dirname, '..', 'sheets', 'pycrm_database.xlsx');
 xlsx.writeFile(workbook, filePath);
 console.log(`Excel database successfully generated at: ${filePath}`);

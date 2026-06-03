@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, FileText, Shield, Send, ClipboardList, Clock, Pencil, Check, X, Plus, Download, Database } from 'lucide-react';
+import { Mail, FileText, Shield, Send, ClipboardList, Clock, Pencil, Check, X, Plus, Download, Database, RefreshCw, CloudDownload } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import type { PayloadType, TrackedStatus } from '@/types';
 import TopNavigationBar from '@/components/TopNavigationBar';
@@ -9,6 +9,7 @@ import Toast from '@/components/Toast';
 import ModalWindow from '@/components/ModalWindow';
 import StatusBadge from '@/components/StatusBadge';
 import { exportCandidatesToExcel, exportFinancialLedgerToExcel, exportAuditLogsToExcel } from '@/lib/exportUtils';
+import { sheetsApi } from '@/services/sheetsApi';
 
 const toggles: { type: PayloadType; label: string; icon: typeof FileText; color: string }[] = [
   { type: 'new-registration', label: 'NEW REG FORM', icon: FileText, color: '#B85C3D' },
@@ -17,7 +18,12 @@ const toggles: { type: PayloadType; label: string; icon: typeof FileText; color:
 ];
 
 export default function Dashboard() {
-  const { candidates, auditLogs, trackedCandidates, settings, updateSettings, addTrackedCandidate, updateTrackedStatus, showToast } = useStore();
+  const {
+    candidates, auditLogs, trackedCandidates, settings,
+    updateSettings, addTrackedCandidate, updateTrackedStatus, showToast,
+    fetchInitialData, triggerSync,
+    syncStatus, lastSyncTimestamp, lastSyncResult, dataSource,
+  } = useStore();
   const [email, setEmail] = useState('');
   const [selectedToggle, setSelectedToggle] = useState<PayloadType>('new-registration');
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
@@ -29,6 +35,8 @@ export default function Dashboard() {
   const [emailError, setEmailError] = useState('');
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewCandidate, setReviewCandidate] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const validateEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
   const isContactMail = selectedToggle === 'contact-mail';
@@ -169,7 +177,7 @@ export default function Dashboard() {
 
     try {
       if (selectedToggle === 'new-registration') {
-        const formLink = settings.googleSheetLinks.registrations || 'https://forms.gle/7MgUZ5zpj5by5EK37'; 
+        const formLink = 'https://forms.gle/LfD5SxxYXDqFGMwn6';
 
         submitToGoogleWindow(
           email.trim(), 
@@ -179,7 +187,7 @@ export default function Dashboard() {
         );
         showToast('Google opened in new tab to dispatch mail.');
       } else if (selectedToggle === 'bgv-form') {
-        const formLink = settings.googleSheetLinks.bgvResponses || 'https://forms.gle/7MgUZ5zpj5by5EK37'; 
+        const formLink = settings.googleSheetLinks.bgvResponses || 'https://forms.gle/LfD5SxxYXDqFGMwn6'; 
 
         submitToGoogleWindow(
           email.trim(), 
@@ -246,6 +254,57 @@ export default function Dashboard() {
     const hrs = Math.floor(mins / 60);
     if (hrs < 24) return `${hrs}h ago`;
     return `${Math.floor(hrs / 24)}d ago`;
+  };
+
+  const handleSyncGoogleSheet = async () => {
+    // Use the registration Google Sheet URL from settings, or the form link
+    const sheetUrl = settings.googleSheetLinks?.registrations || '';
+    
+    if (!sheetUrl) {
+      showToast('Please configure the Google Sheet URL in Settings > Sheet Links > Registrations', 'error');
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const result = await sheetsApi.syncGoogleSheet(sheetUrl);
+      if (result.imported > 0) {
+        showToast(`Successfully synced ${result.imported} new candidate(s) from Google Sheets!`);
+        // Refresh data
+        await fetchInitialData();
+      } else {
+        showToast(`No new candidates to import (${result.total} total rows checked)`, 'info');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to sync from Google Sheets', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleRefreshData = async () => {
+    setIsRefreshing(true);
+    try {
+      const result = await triggerSync();
+      if (result && result.synced > 0) {
+        showToast(`Synced ${result.synced} new candidate${result.synced > 1 ? 's' : ''} from Google Form!`);
+      } else if (result) {
+        showToast('Data refreshed — no new entries found', 'info');
+      } else {
+        showToast('Data refreshed successfully');
+      }
+    } catch {
+      showToast('Failed to refresh data', 'error');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const formatSyncTime = (iso: string | null) => {
+    if (!iso) return 'Never';
+    const d = new Date(iso);
+    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+      + ' · ' + d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
   };
 
   const reviewCandidateData = reviewCandidate
@@ -363,6 +422,38 @@ export default function Dashboard() {
           >
             Enter an email to begin a workflow or search candidate profiles below.
           </motion.p>
+          {/* Sync status strip */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4, delay: 0.4 }}
+            className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full border border-cc-gridline bg-cc-base-surface"
+          >
+            {/* Source chip */}
+            <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+              dataSource === 'gas' ? 'bg-cc-green' :
+              dataSource === 'local' ? 'bg-cc-blue' : 'bg-cc-text-low'
+            }`} />
+            <span className="font-mono text-[10px] uppercase tracking-wider text-cc-text-mid">
+              {dataSource === 'gas' ? 'Live · Google Sheets' :
+               dataSource === 'local' ? 'Local Server' : 'Demo Data'}
+            </span>
+            {lastSyncTimestamp && (
+              <>
+                <span className="text-cc-gridline">·</span>
+                <span className="font-mono text-[10px] text-cc-text-low">
+                  Last sync {formatSyncTime(lastSyncTimestamp)}
+                </span>
+              </>
+            )}
+            {syncStatus === 'syncing' && (
+              <>
+                <span className="text-cc-gridline">·</span>
+                <RefreshCw size={10} className="animate-spin text-cc-warm-text" />
+                <span className="font-mono text-[10px] text-cc-warm-text">Syncing...</span>
+              </>
+            )}
+          </motion.div>
         </div>
 
         {/* Global Prominent Search Panel */}
@@ -625,6 +716,104 @@ export default function Dashboard() {
                     Export Audit Logs
                   </button>
                 </div>
+              </div>
+            </motion.div>
+
+            {/* Google Sheets Sync Panel */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.35 }}
+            >
+              <div className="bg-cc-base-surface border border-cc-gridline rounded-lg p-6 shadow-2xl relative overflow-hidden backdrop-blur-md">
+                <div className="flex items-center justify-between gap-2.5 mb-4 pb-3 border-b border-cc-gridline/50">
+                  <div className="flex items-center gap-2.5">
+                    <CloudDownload size={15} className="text-cc-warm-text" />
+                    <span className="section-header">GOOGLE SHEETS SYNC</span>
+                  </div>
+                  {/* Live sync status badge */}
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border font-mono text-[9px] uppercase tracking-wider ${
+                    syncStatus === 'syncing'  ? 'border-cc-gold/40 bg-cc-gold/10 text-cc-gold' :
+                    syncStatus === 'success'  ? 'border-cc-green/40 bg-cc-green/10 text-cc-green' :
+                    syncStatus === 'error'    ? 'border-cc-danger/40 bg-cc-danger/10 text-cc-danger' :
+                    'border-cc-gridline bg-cc-base-elevated text-cc-text-low'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                      syncStatus === 'syncing' ? 'bg-cc-gold animate-pulse' :
+                      syncStatus === 'success' ? 'bg-cc-green' :
+                      syncStatus === 'error'   ? 'bg-cc-danger' : 'bg-cc-text-low'
+                    }`} />
+                    {syncStatus === 'syncing' ? 'Syncing...' :
+                     syncStatus === 'success' ? 'Synced' :
+                     syncStatus === 'error'   ? 'Sync Error' : 'Idle'}
+                  </span>
+                </div>
+
+                <p className="font-sans text-[13px] text-cc-text-mid mb-4">
+                  Syncs new candidates from <strong className="text-cc-text-high">PyCRM_New_Joinee</strong> sheet into Master_Candidates automatically on load and every 30 seconds.
+                </p>
+
+                {/* Sync stats row */}
+                {lastSyncResult && (
+                  <div className="flex items-center gap-4 mb-4 p-3 rounded bg-cc-base-elevated border border-cc-gridline/50">
+                    <div className="text-center">
+                      <p className="font-mono text-base font-light text-cc-green">{lastSyncResult.synced}</p>
+                      <p className="font-mono text-[9px] text-cc-text-low uppercase tracking-wider">New Added</p>
+                    </div>
+                    <div className="w-px h-8 bg-cc-gridline" />
+                    <div className="text-center">
+                      <p className="font-mono text-base font-light text-cc-text-mid">{lastSyncResult.skipped}</p>
+                      <p className="font-mono text-[9px] text-cc-text-low uppercase tracking-wider">Duplicates</p>
+                    </div>
+                    <div className="w-px h-8 bg-cc-gridline" />
+                    <div className="text-center">
+                      <p className="font-mono text-base font-light text-cc-text-high">{lastSyncResult.total}</p>
+                      <p className="font-mono text-[9px] text-cc-text-low uppercase tracking-wider">Total Rows</p>
+                    </div>
+                    {lastSyncTimestamp && (
+                      <div className="ml-auto text-right">
+                        <p className="font-mono text-[10px] text-cc-text-low">Last sync</p>
+                        <p className="font-mono text-[10px] text-cc-text-mid">{formatSyncTime(lastSyncTimestamp)}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleSyncGoogleSheet}
+                    disabled={isSyncing || syncStatus === 'syncing'}
+                    className="flex items-center gap-2 h-10 px-6 bg-[#5B8FBF] text-white font-mono text-[10px] font-semibold uppercase tracking-wider rounded hover:brightness-110 hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(91,143,191,0.25)] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                  >
+                    <CloudDownload size={14} className={isSyncing ? 'animate-pulse' : ''} />
+                    {isSyncing ? 'SYNCING...' : 'SYNC FROM SHEET URL'}
+                  </button>
+
+                  <button
+                    onClick={handleRefreshData}
+                    disabled={isRefreshing || syncStatus === 'syncing'}
+                    className="flex items-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary disabled:opacity-60 transition-all cursor-pointer"
+                  >
+                    <RefreshCw size={13} className={isRefreshing || syncStatus === 'syncing' ? 'animate-spin' : ''} />
+                    {isRefreshing ? 'SYNCING...' : 'SYNC & REFRESH'}
+                  </button>
+                </div>
+
+                {dataSource === 'mock' && (
+                  <p className="mt-3 micro-text text-cc-gold">
+                    ⚠ Showing demo data. Configure GAS URL in Settings or check your Google Apps Script deployment.
+                  </p>
+                )}
+                {dataSource === 'gas' && (
+                  <p className="mt-3 micro-text text-cc-green">
+                    ✓ Live data from Google Sheets · {candidates.length} candidates loaded
+                  </p>
+                )}
+                {syncStatus === 'error' && dataSource !== 'mock' && (
+                  <p className="mt-3 micro-text text-cc-danger">
+                    ✕ Last sync failed. Check GAS deployment and network.
+                  </p>
+                )}
               </div>
             </motion.div>
           </div>

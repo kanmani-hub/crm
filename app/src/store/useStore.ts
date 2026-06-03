@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import type { Candidate, TrackedCandidate, AppSettings, PipelineType, AuditLogEntry, PaymentRecord } from '@/types';
-import { sheetsApi } from '@/services/sheetsApi';
+import { sheetsApi, type SyncResult } from '@/services/sheetsApi';
 
 type ThemeMode = 'command' | 'sunny';
+type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
 interface AppState {
   candidates: Candidate[];
@@ -25,6 +26,11 @@ interface AppState {
   user: { email: string; name: string } | null;
   loginError: string | null;
   isFetchingData: boolean;
+  // ── New sync-state fields ──
+  syncStatus: SyncStatus;
+  lastSyncTimestamp: string | null;
+  lastSyncResult: SyncResult | null;
+  dataSource: 'gas' | 'local' | 'mock';
 
   // Actions
   setSearchQuery: (q: string) => void;
@@ -51,14 +57,21 @@ interface AppState {
   login: (email: string, password: string) => boolean;
   logout: () => void;
   fetchInitialData: () => Promise<void>;
+  triggerSync: () => Promise<SyncResult | null>;
 }
+
+// ─────────────────────────────────────────────────────────────
+// MOCK / FALLBACK DATA
+// ─────────────────────────────────────────────────────────────
 
 const now = new Date();
 const minsAgo = (m: number) => new Date(now.getTime() - m * 60000).toISOString();
+
 const getInitialThemeMode = (): ThemeMode => {
   if (typeof window === 'undefined') return 'command';
   return window.localStorage.getItem('pycrm-theme-mode') === 'sunny' ? 'sunny' : 'command';
 };
+
 const createDefaultFinancials = (): Candidate['financials'] => [
   { pipelineType: 'registration', baseFee: 0, adjustments: [], paidToDate: 0 },
   { pipelineType: 'course', baseFee: 30000, adjustments: [], paidToDate: 0 },
@@ -239,7 +252,7 @@ const mockLogs: AuditLogEntry[] = [
 const defaultSettings: AppSettings = {
   bgvTeamEmail: 'bgv-team@pythonhr.com',
   hrCCEmail: 'hr@pythonhr.com',
-  gasWebAppUrl: 'https://script.google.com/macros/s/AKfycby7pYr1H1qy64W2_fiU_r3ezU3wgZ6cW6cfhDRqkK9TRsNjvTI3W1hMKv5QlXvEoiD2mA/exec',
+  gasWebAppUrl: 'https://script.google.com/macros/s/AKfycbxIVbtFPBF0p2tOc-Whn6t_ouGeJ5AJX5yf02Czpsv7tzzSTZcp9Ac-Tn1PBOTyJjmH/exec',
   orgName: 'Python HR',
   contactEmails: [
     'recruiter1@company.com',
@@ -258,6 +271,50 @@ const defaultSettings: AppSettings = {
   },
 };
 
+// ─────────────────────────────────────────────────────────────
+// GAS → Candidate mapper
+// Converts a raw GAS row object (all strings) into a typed Candidate.
+// ─────────────────────────────────────────────────────────────
+function mapGasRowToCandidate(row: Record<string, string>): Candidate {
+  const toBool = (v: string) => String(v).toLowerCase() === 'true';
+
+  const financials: Candidate['financials'] = createDefaultFinancials();
+  // If GAS ever sends financial data, we'd map it here.
+  // For now, we use defaults since financials live in a separate sheet.
+
+  return {
+    id: row.candidateId || `c_${Math.random().toString(36).slice(2)}`,
+    fullName: row.fullName || '',
+    email: row.email || '',
+    phone: row.phone || '',
+    batchName: row.batchName || 'Batch 1',
+    dateOfBirth: row.dateOfBirth || '',
+    address: row.address || '',
+    branch: row.branch || 'Online',
+    course: row.course || 'Python Core',
+    dateOfJoining: row.dateOfJoining || '',
+    currentStatus: (row.currentStatus as Candidate['currentStatus']) || 'active',
+    bgvStatus: (row.bgvStatus as Candidate['bgvStatus']) || 'pending',
+    placed: toBool(row.placed),
+    placedCompany: row.placedCompany || undefined,
+    pastEmployment: [],
+    documentsReceived: {
+      offerLetter: false, appraisals: false, payslips: false,
+      relievingLetter: false, counterOffer: false,
+    },
+    documentsApplied: {
+      offerLetter: false, appraisals: false, payslips: false,
+      relievingLetter: false, counterOffer: false,
+    },
+    trackedStatus: (row.trackedStatus as Candidate['trackedStatus']) || undefined,
+    trackedAt: row.trackedAt || undefined,
+    financials,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// STORE
+// ─────────────────────────────────────────────────────────────
 export const useStore = create<AppState>((set, get) => ({
   candidates: mockCandidates,
   trackedCandidates: mockTracked,
@@ -279,120 +336,105 @@ export const useStore = create<AppState>((set, get) => ({
   user: typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('pycrm_user') || 'null') : null,
   loginError: null,
   isFetchingData: false,
+  syncStatus: 'idle',
+  lastSyncTimestamp: null,
+  lastSyncResult: null,
+  dataSource: 'mock',
 
+  // ─── Data fetching ──────────────────────────────────────────
   fetchInitialData: async () => {
-    set({ isFetchingData: true });
+    // Avoid concurrent fetches
+    if (get().isFetchingData) return;
+    set({ isFetchingData: true, syncStatus: 'syncing' });
+
     try {
-      const data = await sheetsApi.fetchAllData();
-      
-      if (data.Master_Candidates) {
-        // Build settings
-        const newSettings = { ...defaultSettings };
-        const appSet = data.App_Settings || [];
-        appSet.forEach((s: any) => {
-          if (s.settingKey === 'orgName') newSettings.orgName = s.settingValue;
-          if (s.settingKey === 'bgvTeamEmail') newSettings.bgvTeamEmail = s.settingValue;
-          if (s.settingKey === 'hrCCEmail') newSettings.hrCCEmail = s.settingValue;
-          if (s.settingKey === 'gasWebAppUrl') newSettings.gasWebAppUrl = s.settingValue;
-        });
-        const courses = data.Courses_Dropdown?.filter((c:any) => c.active).sort((a:any,b:any) => a.sortOrder - b.sortOrder).map((c:any) => c.label) || [];
-        if (courses.length > 0) newSettings.courses = courses;
-        const branches = data.Branches_Dropdown?.filter((b:any) => b.active).sort((a:any,b:any) => a.sortOrder - b.sortOrder).map((b:any) => b.label) || [];
-        if (branches.length > 0) newSettings.branches = branches;
+      const response = await sheetsApi.fetchAllData();
 
-        // Build Candidates
-        const rawCandidates = data.Master_Candidates || [];
-        const rawDocs = data.Candidate_Documents || [];
-        const rawEmp = data.Candidate_Employment || [];
-        const rawFin = data.Financial_Ledger || [];
-        const rawFinAdj = data.Financial_Adjustments || [];
-        
-        const mappedCandidates: Candidate[] = rawCandidates.map((c: any) => {
-          // Documents
-          const cDocs = rawDocs.filter((d: any) => d.candidateId === c.candidateId);
-          const docsRec: any = {};
-          const docsApp: any = {};
-          cDocs.forEach((d: any) => {
-            docsRec[d.documentKey] = String(d.received).toLowerCase() === 'true';
-            docsApp[d.documentKey] = String(d.applied).toLowerCase() === 'true';
-          });
-          
-          // Employment
-          const cEmp = rawEmp.filter((e: any) => e.candidateId === c.candidateId).sort((a:any,b:any) => a.sortOrder - b.sortOrder).map((e:any) => e.companyName);
-          
-          // Financials
-          const cFin = rawFin.filter((f: any) => f.candidateId === c.candidateId);
-          const mappedFin = cFin.map((f: any) => {
-            const adj = rawFinAdj.filter((a: any) => a.candidateId === c.candidateId && a.pipelineType === f.pipelineType);
-            return {
-              pipelineType: f.pipelineType,
-              baseFee: f.baseFee || 0,
-              paidToDate: f.paidToDate || 0,
-              adjustments: adj.map((a:any) => ({ id: a.adjustmentId, amount: a.amount, label: a.label, reason: a.reason, createdAt: a.createdAt, userStamp: a.userStamp }))
-            };
-          });
+      if (response.success && Array.isArray(response.candidates) && response.candidates.length > 0) {
+        // Filter out completely empty rows (GAS can return them)
+        const validRows = response.candidates.filter(
+          (row) => row.candidateId || row.fullName || row.email
+        );
 
-          return {
-            id: c.candidateId,
-            fullName: c.fullName,
+        const mappedCandidates = validRows.map(mapGasRowToCandidate);
+
+        // Build tracked list from candidates that have trackedStatus
+        const trackedFromCandidates: TrackedCandidate[] = mappedCandidates
+          .filter((c) => c.trackedStatus)
+          .map((c) => ({
+            candidateId: c.id,
+            status: c.trackedStatus!,
+            payloadType: 'new-registration' as const,
             email: c.email,
-            phone: c.phone,
-            batchName: c.batchName,
-            dateOfBirth: c.dateOfBirth,
-            address: c.address,
-            branch: c.branch,
-            course: c.course,
-            dateOfJoining: c.dateOfJoining,
-            currentStatus: c.currentStatus || 'active',
-            bgvStatus: c.bgvStatus || 'pending',
-            placed: String(c.placed).toLowerCase() === 'true',
-            placedCompany: c.placedCompany || undefined,
-            trackedStatus: c.trackedStatus || undefined,
-            trackedAt: c.trackedAt || undefined,
-            pastEmployment: cEmp,
-            documentsReceived: docsRec,
-            documentsApplied: docsApp,
-            financials: mappedFin.length ? mappedFin : createDefaultFinancials()
-          };
-        });
+            name: c.fullName,
+            timestamp: c.trackedAt || new Date().toISOString(),
+          }));
 
-        // Audit Logs & Tracked
-        const mappedLogs = (data.System_Audit_Logs || []).map((l: any) => ({
-          id: l.logId, candidateId: l.candidateId, logType: l.logType, description: l.description, reason: l.reason, userStamp: l.userStamp, timestamp: l.timestamp
-        }));
-        
-        const mappedTracked = (data.Tracked_Candidates || []).map((t: any) => ({
-          candidateId: t.candidateId, status: t.status, payloadType: t.payloadType, email: t.email, name: t.name, contactCount: t.contactCount, timestamp: t.timestamp
-        }));
-
-        const mappedPayments = (data.Payment_Records || []).map((p: any) => ({
-          id: p.paymentId, candidateId: p.candidateId, pipelineType: p.pipelineType, amount: p.amount, transactionRef: p.transactionRef, notes: p.notes, timestamp: p.timestamp, userStamp: p.userStamp
-        }));
+        // Merge with existing tracked list (keep items dispatched from Push Panel)
+        const existingTracked = get().trackedCandidates;
+        const existingIds = new Set(trackedFromCandidates.map((t) => t.candidateId));
+        const manualTracked = existingTracked.filter((t) => !existingIds.has(t.candidateId));
+        const mergedTracked = [...trackedFromCandidates, ...manualTracked];
 
         set({
           candidates: mappedCandidates,
-          auditLogs: mappedLogs,
-          trackedCandidates: mappedTracked,
-          paymentRecords: mappedPayments,
-          settings: newSettings
+          trackedCandidates: mergedTracked,
+          syncStatus: 'success',
+          lastSyncTimestamp: response.timestamp || new Date().toISOString(),
+          lastSyncResult: response.sync || null,
+          dataSource: 'gas',
+          isFetchingData: false,
         });
-        
-        console.log("Successfully mapped relational database!");
-      } else {
-        console.log("Database schema missing tables, falling back to mocks.");
+
+        if (response.sync && response.sync.synced > 0) {
+          get().showToast(
+            `✓ ${response.sync.synced} new candidate${response.sync.synced > 1 ? 's' : ''} synced from Google Form`,
+            'success'
+          );
+        }
+
+        console.log('[store] Loaded', mappedCandidates.length, 'candidates from GAS');
+        return;
+      }
+
+      // GAS returned success=true but no candidates — fall through to mock
+      console.warn('[store] GAS returned no candidates, keeping current data');
+      set({ syncStatus: 'success', lastSyncTimestamp: new Date().toISOString(), isFetchingData: false });
+
+    } catch (err) {
+      console.warn('[store] GAS fetch failed, falling back to mock data:', err);
+
+      // Only load mocks if we're currently showing mocks (don't overwrite real data on transient errors)
+      if (get().dataSource === 'mock') {
         set({
           candidates: mockCandidates,
+          trackedCandidates: mockTracked,
           auditLogs: mockLogs,
-          settings: defaultSettings
+          dataSource: 'mock',
         });
       }
-    } catch (err) {
-      console.error("Failed to fetch from proxy server:", err);
-    } finally {
-      set({ isFetchingData: false });
+
+      set({ syncStatus: 'error', isFetchingData: false });
     }
   },
 
+  // ─── Manual sync trigger ────────────────────────────────────
+  triggerSync: async () => {
+    set({ syncStatus: 'syncing' });
+    try {
+      const result = await sheetsApi.syncNewJoinees();
+      // After sync, refresh the full data
+      await get().fetchInitialData();
+      set({ lastSyncResult: result });
+      return result;
+    } catch (err) {
+      set({ syncStatus: 'error' });
+      console.error('[store] triggerSync failed:', err);
+      return null;
+    }
+  },
+
+  // ─── Search & filter ────────────────────────────────────────
   setSearchQuery: (q) => set({ searchQuery: q }),
   clearSearchQuery: () => set({ searchQuery: '' }),
   toggleFilter: (filter) => set((s) => ({
@@ -403,6 +445,8 @@ export const useStore = create<AppState>((set, get) => ({
   setBranchFilter: (branch) => set({ branchFilter: branch }),
   setCourseFilter: (course) => set({ courseFilter: course }),
   setPlacementFilter: (placement) => set({ placementFilter: placement }),
+
+  // ─── Theme ──────────────────────────────────────────────────
   toggleThemeMode: () => set((s) => {
     const next = s.themeMode === 'sunny' ? 'command' : 'sunny';
     if (typeof window !== 'undefined') {
@@ -410,11 +454,15 @@ export const useStore = create<AppState>((set, get) => ({
     }
     return { themeMode: next };
   }),
+
+  // ─── UI flags ───────────────────────────────────────────────
   setActiveProfileId: (id) => set({ activeProfileId: id, sidebarOpen: false }),
   toggleGlobalEdit: () => set((s) => ({ globalEditMode: !s.globalEditMode })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   showToast: (message, type = 'success') => set({ toastMessage: message, toastType: type }),
   clearToast: () => set({ toastMessage: null }),
+
+  // ─── Tracked candidates ─────────────────────────────────────
   addTrackedCandidate: (tc) => set((s) => ({
     trackedCandidates: [tc, ...s.trackedCandidates],
   })),
@@ -423,6 +471,8 @@ export const useStore = create<AppState>((set, get) => ({
       t.candidateId === candidateId ? { ...t, status } : t
     ),
   })),
+
+  // ─── Candidate mutations ─────────────────────────────────────
   updateCandidate: (id, updates) => set((s) => ({
     candidates: s.candidates.map((c) =>
       c.id === id ? { ...c, ...updates } : c
@@ -439,14 +489,27 @@ export const useStore = create<AppState>((set, get) => ({
       };
     }),
   })),
-  updateSettings: (settings) => set({ settings }),
+
+  // ─── Settings ───────────────────────────────────────────────
+  updateSettings: (settings) => {
+    // Persist GAS URL to localStorage for sheetsApi to read
+    if (settings.gasWebAppUrl && typeof window !== 'undefined') {
+      window.localStorage.setItem('pycrm-gas-url', settings.gasWebAppUrl);
+    }
+    set({ settings });
+  },
+
+  // ─── Financial & logs ───────────────────────────────────────
   addPaymentRecord: (payment) => set((s) => ({
     paymentRecords: [payment, ...s.paymentRecords],
   })),
   addAuditLog: (log) => set((s) => ({
     auditLogs: [log, ...s.auditLogs],
   })),
+
+  // ─── Selectors ──────────────────────────────────────────────
   getCandidateById: (id) => get().candidates.find((c) => c.id === id),
+
   getFilteredCandidates: () => {
     const { candidates, trackedCandidates, searchQuery, activeFilters, branchFilter, courseFilter, placementFilter } = get();
     let results = [...candidates];
@@ -499,6 +562,7 @@ export const useStore = create<AppState>((set, get) => ({
     return results;
   },
 
+  // ─── Auth ────────────────────────────────────────────────────
   login: (email, password) => {
     if (email.trim().toLowerCase() === 'admin@pythonhr.com' && password === 'admin123') {
       const userData = { email: email.trim().toLowerCase(), name: 'Python HR Admin' };

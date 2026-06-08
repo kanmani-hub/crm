@@ -109,5 +109,7 @@ export interface AppSettings {
     financials: string;
     auditLogs: string;
     settings: string;
+    registrationForm?: string;
+    bgvForm?: string;
   };
 }

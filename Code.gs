@@ -3,35 +3,19 @@
  * PyCRM — Code.gs (Google Apps Script Backend)
  * ============================================================
  * 
- * SETUP INSTRUCTIONS:
- * 1. Open your Google Apps Script project
- * 2. Replace ALL content in Code.gs with this file
- * 3. Deploy → Manage deployments → Edit → Version: "New version" → Deploy
- * 4. Edit → Triggers → Add trigger:
- *    - Function: onFormSubmit
- *    - Event source: From spreadsheet
- *    - Event type: On form submit
- * 5. Copy the new Web App URL and update Settings → gasWebAppUrl
- * 
  * SHEET NAMES (must match exactly):
- * - "PyCRM_New_Joinee"  → Google Form responses land here
+ * - "Registration_Responses"  → Google Form responses land here
  * - "Master_Candidates"  → Canonical candidate list
+ * - "Financial_Ledger" → Financial tracking
  */
 
-// ============================================================
-// CONFIGURATION
-// ============================================================
-
-/** Name of the sheet where Google Form responses arrive */
-var FORM_SHEET_NAME = 'PyCRM_New_Joinee';
-
-/** Name of the master candidates sheet */
+var FORM_SOURCE_SHEET = 'Form responses 1';
+var REGISTRATION_SHEET = 'Registration_Responses';
 var MASTER_SHEET_NAME = 'Master_Candidates';
 
-/** Master_Candidates column order (A through R) */
 var MASTER_HEADERS = [
   'candidateId',    // A
-  'fullName',       // B
+  'FullName',       // B
   'email',          // C
   'phone',          // D
   'batchName',      // E
@@ -54,35 +38,32 @@ var MASTER_HEADERS = [
 // ENTRY POINTS
 // ============================================================
 
-/**
- * doGet — Handles all GET requests from the frontend.
- * Query params:
- *   ?action=getData           → returns all Master_Candidates rows
- *   ?action=syncNewJoinees    → syncs form responses → master, returns results
- *   ?action=getDashboardMetrics → returns computed KPI summary
- *   (no action)               → returns getData by default
- */
 function doGet(e) {
   try {
-    var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : 'getData';
+    var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : '';
     var result;
 
     switch (action) {
-      case 'syncNewJoinees':
-        result = syncNewJoinees();
-        break;
-      case 'getDashboardMetrics':
-        result = getDashboardMetrics();
-        break;
-      case 'getData':
-      default:
-        // Sync first, then return fresh data
-        var syncResult = syncNewJoinees();
-        var candidates = getAllCandidates();
+      case 'getCandidates':
         result = {
           success: true,
-          candidates: candidates,
-          sync: syncResult,
+          candidates: getCandidates(),
+          timestamp: new Date().toISOString()
+        };
+        break;
+      case 'getDashboardMetrics':
+        var metricsObj = getDashboardMetrics();
+        metricsObj.success = true;
+        result = metricsObj;
+        break;
+      case 'syncMasterCandidates':
+        result = syncMasterCandidates();
+        break;
+      default:
+        result = {
+          success: true,
+          candidates: getCandidates(),
+          metrics: getDashboardMetrics(),
           timestamp: new Date().toISOString()
         };
         break;
@@ -98,24 +79,18 @@ function doGet(e) {
   }
 }
 
-/**
- * doPost — Handles POST requests (form dispatch / email sending).
- * Preserves existing email dispatch functionality.
- */
 function doPost(e) {
   try {
     var params = e.parameter || {};
     var action = params.action || '';
 
-    // --- If action=syncNewJoinees, run sync via POST ---
-    if (action === 'syncNewJoinees') {
-      var syncResult = syncNewJoinees();
+    if (action === 'syncMasterCandidates') {
+      var syncResult = syncMasterCandidates();
       return ContentService
         .createTextOutput(JSON.stringify(syncResult))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // --- Email dispatch (existing functionality) ---
     var to = params.to || '';
     var cc = params.cc || '';
     var formType = params.formType || 'Registration';
@@ -136,11 +111,7 @@ function doPost(e) {
         + '<p style="color:#888;font-size:12px;margin-top:32px;">— PyCRM Command Center</p>'
         + '</div>';
 
-      var mailOptions = {
-        to: to,
-        subject: subject,
-        htmlBody: htmlBody
-      };
+      var mailOptions = { to: to, subject: subject, htmlBody: htmlBody };
       if (cc) mailOptions.cc = cc;
 
       MailApp.sendEmail(mailOptions);
@@ -151,7 +122,7 @@ function doPost(e) {
     }
 
     return ContentService
-      .createTextOutput(JSON.stringify({ success: false, error: 'Missing required parameters (to, formLink)' }))
+      .createTextOutput(JSON.stringify({ success: false, error: 'Missing required parameters' }))
       .setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
@@ -161,165 +132,235 @@ function doPost(e) {
   }
 }
 
-/**
- * onFormSubmit — Installable trigger that runs when a Google Form is submitted.
- * Automatically syncs new responses to Master_Candidates.
- */
-function onFormSubmit(e) {
-  try {
-    Utilities.sleep(2000); // Wait for the form response row to fully write
-    syncNewJoinees();
-    Logger.log('onFormSubmit: Sync completed successfully');
-  } catch (err) {
-    Logger.log('onFormSubmit error: ' + err.toString());
+// ============================================================
+// FORM SUBMIT HANDLER
+// ============================================================
+function getFormValue(namedValues, possibleKeys) {
+  for (var key in namedValues) {
+    var normalized = key.toLowerCase().replace(/\s+/g, '');
+    for (var i = 0; i < possibleKeys.length; i++) {
+      if (normalized === possibleKeys[i].toLowerCase().replace(/\s+/g, '')) {
+        return namedValues[key][0];
+      }
+    }
   }
+  return '';
 }
 
+function onFormSubmit(e) {
+  try {
+    var namedValues = (e && e.namedValues) ? e.namedValues : {};
+    
+    var fullName = getFormValue(namedValues, ['FullName', 'FULLNAME', 'Full Name', 'fullname']);
+    var email    = getFormValue(namedValues, ['EMAIL']);
+    var phone    = getFormValue(namedValues, ['MOB NO']);
+    var mode     = getFormValue(namedValues, ['MODE']);
+    var branch   = getFormValue(namedValues, ['BRANCH']);
+    var course   = getFormValue(namedValues, ['DOMAIN']);
+    var dob      = getFormValue(namedValues, ['DOB']);
+    var address  = getFormValue(namedValues, ['ADDRESS']);
+    var remarks  = getFormValue(namedValues, ['REMARKS']);
+    var submittedAt = getFormValue(namedValues, ['Timestamp']) || new Date().toISOString();
+
+    Logger.log("[SYNC] Form submission received");
+    Logger.log("=== FORM DATA ===");
+    Logger.log(JSON.stringify(namedValues));
+    Logger.log("FullName=" + fullName);
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var regSheet = ss.getSheetByName(REGISTRATION_SHEET);
+    if (!regSheet) return;
+
+    var submissionId = 'sub_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+    var syncStatus = 'pending';
+
+    var regData = regSheet.getDataRange().getValues();
+    if (regData.length < 1) return;
+    var regHeaders = regData[0].map(function(h) { return String(h).trim(); });
+
+    var mappedRow = new Array(regHeaders.length);
+    for (var i = 0; i < mappedRow.length; i++) {
+      var header = regHeaders[i];
+      switch (header) {
+        case 'submissionId': mappedRow[i] = submissionId; break;
+        case 'FullName': mappedRow[i] = fullName; break;
+        case 'fullName': mappedRow[i] = fullName; break;
+        case 'email': mappedRow[i] = email; break;
+        case 'tokenEmail': mappedRow[i] = email; break;
+        case 'phone': mappedRow[i] = phone; break;
+        case 'dob': mappedRow[i] = dob; break;
+        case 'address': mappedRow[i] = address; break;
+        case 'course': mappedRow[i] = course; break;
+        case 'branch': mappedRow[i] = branch; break;
+        case 'submittedAt': mappedRow[i] = submittedAt; break;
+        case 'syncStatus': mappedRow[i] = syncStatus; break;
+        case 'candidateId': mappedRow[i] = ''; break;
+        case 'batchName': mappedRow[i] = mode; break;
+        case 'remarks': mappedRow[i] = remarks; break;
+        default: mappedRow[i] = ''; break;
+      }
+    }
+
+    regSheet.appendRow(mappedRow);
+    Logger.log("[SYNC] Registration_Responses updated");
+    
+    // Force immediate synchronization
+    SpreadsheetApp.flush();
+    syncMasterCandidates();
+    Logger.log("[SYNC] Dashboard refreshed");
+
+  } catch (err) {
+    Logger.log("onFormSubmit error: " + err.toString());
+  }
+}
 
 // ============================================================
 // CORE SYNC LOGIC
 // ============================================================
 
-/**
- * syncNewJoinees — Reads PyCRM_New_Joinee, deduplicates, and appends
- * new candidates to Master_Candidates.
- * 
- * Returns { success, synced, skipped, total, newCandidates[] }
- */
-function syncNewJoinees() {
+function syncMasterCandidates() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var formSheet = ss.getSheetByName(FORM_SHEET_NAME);
+  var regSheet = ss.getSheetByName(REGISTRATION_SHEET);
   var masterSheet = ss.getSheetByName(MASTER_SHEET_NAME);
 
-  if (!formSheet) {
-    return { success: false, error: 'Sheet "' + FORM_SHEET_NAME + '" not found', synced: 0, skipped: 0, total: 0 };
-  }
-  if (!masterSheet) {
-    return { success: false, error: 'Sheet "' + MASTER_SHEET_NAME + '" not found', synced: 0, skipped: 0, total: 0 };
+  if (!regSheet || !masterSheet) {
+    return { success: false, error: 'Required sheets not found', synced: 0, skipped: 0, total: 0 };
   }
 
-  // --- Read form responses ---
-  var formData = formSheet.getDataRange().getValues();
-  if (formData.length < 2) {
+  var regData = regSheet.getDataRange().getValues();
+  if (regData.length < 2) {
     return { success: true, synced: 0, skipped: 0, total: 0, message: 'No form responses found' };
   }
 
-  var formHeaders = formData[0].map(function(h) { return String(h).trim(); });
-  var formRows = formData.slice(1);
+  var regHeaders = regData[0].map(function(h) { return String(h).trim(); });
+  
+  var idxEmail = indexOfHeader(regHeaders, ['email', 'tokenemail']);
+  var idxPhone = indexOfHeader(regHeaders, ['phone', 'mob no']);
+  var idxFullName = indexOfHeader(regHeaders, ['fullname']);
+  var idxDob = indexOfHeader(regHeaders, ['dob', 'dateofbirth']);
+  var idxAddress = indexOfHeader(regHeaders, ['address']);
+  var idxCourse = indexOfHeader(regHeaders, ['course', 'domain']);
+  var idxBranch = indexOfHeader(regHeaders, ['branch']);
+  var idxStatus = indexOfHeader(regHeaders, ['syncstatus']);
+  var idxCandId = indexOfHeader(regHeaders, ['candidateid']);
+  var idxBatch = indexOfHeader(regHeaders, ['batchname', 'mode']);
+  var idxRemarks = indexOfHeader(regHeaders, ['remarks']);
 
-  // --- Read existing master data for duplicate check ---
   var masterData = masterSheet.getDataRange().getValues();
   var masterHeaders = masterData[0] || MASTER_HEADERS;
 
-  // Build lookup sets for duplicate checking (email + phone)
   var existingEmails = {};
   var existingPhones = {};
-  var emailCol = indexOfHeader(masterHeaders, ['email', 'e-mail', 'mail']);
-  var phoneCol = indexOfHeader(masterHeaders, ['phone', 'mob', 'mobile', 'contact']);
+  var mEmailCol = indexOfHeader(masterHeaders, ['email', 'e-mail', 'mail']);
+  var mPhoneCol = indexOfHeader(masterHeaders, ['phone', 'mob', 'mobile', 'contact']);
 
   for (var i = 1; i < masterData.length; i++) {
     var row = masterData[i];
-    // Skip completely empty rows
     if (isRowEmpty(row)) continue;
 
-    if (emailCol >= 0 && row[emailCol]) {
-      existingEmails[normalizeValue(row[emailCol])] = true;
+    if (mEmailCol >= 0 && row[mEmailCol]) {
+      existingEmails[normalizeValue(row[mEmailCol])] = i + 1;
     }
-    if (phoneCol >= 0 && row[phoneCol]) {
-      existingPhones[normalizePhone(row[phoneCol])] = true;
+    if (mPhoneCol >= 0 && row[mPhoneCol]) {
+      existingPhones[normalizePhone(row[mPhoneCol])] = i + 1;
     }
   }
 
-  // --- Map form columns using flexible matching ---
-  var colMap = mapFormColumns(formHeaders);
-
-  // --- Process each form row ---
   var synced = 0;
   var skipped = 0;
   var newCandidates = [];
   var now = new Date().toISOString();
 
-  for (var r = 0; r < formRows.length; r++) {
-    var fRow = formRows[r];
-
-    // Skip empty rows (timestamp is empty = not a real submission)
-    if (colMap.timestamp >= 0 && !fRow[colMap.timestamp]) continue;
-    // Also skip if first column (usually Timestamp) is empty
-    if (!fRow[0] && !fRow[1]) continue;
-
-    // Extract values with flexible column mapping
-    var fullName = getVal(fRow, colMap.fullName);
-    var email    = getVal(fRow, colMap.email);
-    var phone    = getVal(fRow, colMap.phone);
-    var course   = getVal(fRow, colMap.course);
-    var branch   = getVal(fRow, colMap.branch);
-    var dob      = getVal(fRow, colMap.dob);
-    var address  = getVal(fRow, colMap.address);
-
-    // Must have at least a name to proceed
-    if (!fullName) {
-      skipped++;
+  for (var r = 1; r < regData.length; r++) {
+    var row = regData[r];
+    
+    var status = idxStatus >= 0 ? row[idxStatus] : '';
+    if (status === 'imported' || status === 'synced') {
       continue;
     }
 
-    // --- Duplicate check ---
-    var isDuplicate = false;
+    var fullName = getVal(row, idxFullName);
+    var email    = getVal(row, idxEmail);
+    var phone    = getVal(row, idxPhone);
 
+    var targetMasterRow = -1;
     if (email) {
       var normEmail = normalizeValue(email);
-      if (existingEmails[normEmail]) {
-        isDuplicate = true;
-      }
+      if (existingEmails[normEmail]) targetMasterRow = existingEmails[normEmail];
     }
-
-    if (!isDuplicate && phone) {
+    if (targetMasterRow === -1 && phone) {
       var normPhone = normalizePhone(phone);
-      if (normPhone.length >= 10 && existingPhones[normPhone]) {
-        isDuplicate = true;
-      }
+      if (normPhone.length >= 10 && existingPhones[normPhone]) targetMasterRow = existingPhones[normPhone];
     }
 
-    if (isDuplicate) {
-      skipped++;
+    if (targetMasterRow !== -1) {
+      var mFullNameCol = indexOfHeader(masterHeaders, ['fullname']);
+      var mDobCol = indexOfHeader(masterHeaders, ['dob', 'dateofbirth']);
+      var mAddressCol = indexOfHeader(masterHeaders, ['address']);
+      var mBranchCol = indexOfHeader(masterHeaders, ['branch']);
+      var mCourseCol = indexOfHeader(masterHeaders, ['course', 'domain']);
+      var mBatchCol = indexOfHeader(masterHeaders, ['batchname', 'mode']);
+      var mUpdatedAtCol = indexOfHeader(masterHeaders, ['updatedat']);
+      
+      if (mFullNameCol >= 0 && fullName) masterSheet.getRange(targetMasterRow, mFullNameCol + 1).setValue(fullName);
+      if (mEmailCol >= 0 && email) masterSheet.getRange(targetMasterRow, mEmailCol + 1).setValue(email);
+      if (mPhoneCol >= 0 && phone) masterSheet.getRange(targetMasterRow, mPhoneCol + 1).setValue(phone);
+      if (mDobCol >= 0 && getVal(row, idxDob)) masterSheet.getRange(targetMasterRow, mDobCol + 1).setValue(formatDate(getVal(row, idxDob)));
+      if (mAddressCol >= 0 && getVal(row, idxAddress)) masterSheet.getRange(targetMasterRow, mAddressCol + 1).setValue(getVal(row, idxAddress));
+      if (mBranchCol >= 0 && getVal(row, idxBranch)) masterSheet.getRange(targetMasterRow, mBranchCol + 1).setValue(getVal(row, idxBranch));
+      if (mCourseCol >= 0 && getVal(row, idxCourse)) masterSheet.getRange(targetMasterRow, mCourseCol + 1).setValue(getVal(row, idxCourse));
+      if (mBatchCol >= 0 && getVal(row, idxBatch)) masterSheet.getRange(targetMasterRow, mBatchCol + 1).setValue(getVal(row, idxBatch));
+      if (mUpdatedAtCol >= 0) masterSheet.getRange(targetMasterRow, mUpdatedAtCol + 1).setValue(now);
+      
+      if (idxStatus >= 0) regSheet.getRange(r + 1, idxStatus + 1).setValue('imported');
+      Logger.log("[SYNC] Master_Candidates updated (duplicate merged)");
+      synced++;
       continue;
     }
 
-    // --- Generate candidate ID ---
-    var candidateId = 'c_' + Date.now() + '_' + r;
+    // Auto-generate candidateId if it doesn't exist
+    var candidateId = row[idxCandId] || ('c_' + Date.now() + '_' + r);
 
-    // --- Build Master_Candidates row ---
-    var newRow = [
-      candidateId,                           // A: candidateId
-      fullName,                              // B: fullName
-      email || '',                           // C: email
-      phone || '',                           // D: phone
-      'Batch 1',                             // E: batchName (default)
-      formatDate(dob),                       // F: dateOfBirth
-      address || '',                         // G: address
-      branch || 'Online',                    // H: branch (default)
-      course || 'Python Core',              // I: course (default)
-      now.split('T')[0],                     // J: dateOfJoining (today)
-      'active',                              // K: currentStatus
-      'pending',                             // L: bgvStatus
-      'FALSE',                               // M: placed
-      '',                                    // N: placedCompany
-      'form-pending',                        // O: trackedStatus
-      now,                                   // P: trackedAt
-      now,                                   // Q: createdAt
-      now                                    // R: updatedAt
-    ];
+    if (idxStatus >= 0) regSheet.getRange(r + 1, idxStatus + 1).setValue('imported');
+    if (idxCandId >= 0) regSheet.getRange(r + 1, idxCandId + 1).setValue(candidateId);
 
-    masterSheet.appendRow(newRow);
+    var newMasterRow = new Array(masterHeaders.length);
+    for (var i = 0; i < newMasterRow.length; i++) {
+      var header = String(masterHeaders[i]).trim();
+      switch (header) {
+        case 'candidateId': newMasterRow[i] = candidateId; break;
+        case 'FullName': newMasterRow[i] = fullName; break;
+        case 'email': newMasterRow[i] = email; break;
+        case 'phone': newMasterRow[i] = phone; break;
+        case 'batchName': newMasterRow[i] = getVal(row, idxBatch); break;
+        case 'dateOfBirth': newMasterRow[i] = formatDate(getVal(row, idxDob)); break;
+        case 'address': newMasterRow[i] = getVal(row, idxAddress); break;
+        case 'branch': newMasterRow[i] = getVal(row, idxBranch); break;
+        case 'course': newMasterRow[i] = getVal(row, idxCourse); break;
+        case 'dateOfJoining': newMasterRow[i] = now.split('T')[0]; break;
+        case 'currentStatus': newMasterRow[i] = 'active'; break;
+        case 'bgvStatus': newMasterRow[i] = 'pending'; break;
+        case 'placed': newMasterRow[i] = 'FALSE'; break;
+        case 'placedCompany': newMasterRow[i] = ''; break;
+        case 'trackedStatus': newMasterRow[i] = 'form-pending'; break;
+        case 'trackedAt': newMasterRow[i] = now; break;
+        case 'createdAt': newMasterRow[i] = now; break;
+        case 'updatedAt': newMasterRow[i] = now; break;
+        default: newMasterRow[i] = ''; break;
+      }
+    }
 
-    // Track for duplicate prevention within this batch
-    if (email) existingEmails[normalizeValue(email)] = true;
-    if (phone) existingPhones[normalizePhone(phone)] = true;
+    masterSheet.appendRow(newMasterRow);
+    Logger.log("[SYNC] Master_Candidates updated");
+
+    if (email) existingEmails[normalizeValue(email)] = masterSheet.getLastRow();
+    if (phone) existingPhones[normalizePhone(phone)] = masterSheet.getLastRow();
 
     newCandidates.push({
       candidateId: candidateId,
       fullName: fullName,
-      email: email || '',
-      phone: phone || ''
+      email: email,
+      phone: phone
     });
 
     synced++;
@@ -329,21 +370,17 @@ function syncNewJoinees() {
     success: true,
     synced: synced,
     skipped: skipped,
-    total: formRows.length,
+    total: regData.length - 1,
     newCandidates: newCandidates,
     timestamp: now
   };
 }
 
-
 // ============================================================
-// DATA RETRIEVAL
+// DATA RETRIEVAL (UNCHANGED)
 // ============================================================
 
-/**
- * getAllCandidates — Returns all non-empty rows from Master_Candidates as objects.
- */
-function getAllCandidates() {
+function getCandidates() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(MASTER_SHEET_NAME);
   if (!sheet) return [];
@@ -362,7 +399,6 @@ function getAllCandidates() {
     for (var j = 0; j < headers.length; j++) {
       var key = headers[j];
       var val = row[j];
-      // Convert Date objects to strings
       if (val instanceof Date) {
         obj[key] = val.toISOString();
       } else {
@@ -370,7 +406,6 @@ function getAllCandidates() {
       }
     }
 
-    // Only include rows that have at least a candidateId or fullName
     if (obj.candidateId || obj.fullName) {
       candidates.push(obj);
     }
@@ -379,108 +414,82 @@ function getAllCandidates() {
   return candidates;
 }
 
-/**
- * getDashboardMetrics — Computes summary metrics from Master_Candidates.
- */
 function getDashboardMetrics() {
-  var candidates = getAllCandidates();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var candidates = getCandidates();
   var totalCandidates = candidates.length;
   var placedCount = 0;
-  var activeCount = 0;
-  var pendingBGV = 0;
-  var clearedBGV = 0;
-
-  var branchCounts = {};
-  var courseCounts = {};
-
+  
   for (var i = 0; i < candidates.length; i++) {
-    var c = candidates[i];
+    if (String(candidates[i].placed).toUpperCase() === 'TRUE') placedCount++;
+  }
 
-    if (String(c.placed).toUpperCase() === 'TRUE') placedCount++;
-    if (c.currentStatus === 'active') activeCount++;
-    if (c.bgvStatus === 'pending') pendingBGV++;
-    if (c.bgvStatus === 'cleared') clearedBGV++;
-
-    var branch = c.branch || 'Unknown';
-    branchCounts[branch] = (branchCounts[branch] || 0) + 1;
-
-    var course = c.course || 'Unknown';
-    courseCounts[course] = (courseCounts[course] || 0) + 1;
+  var revenue = 0;
+  var pendingDues = 0;
+  
+  var finSheet = ss.getSheetByName('Financial_Ledger');
+  if (finSheet) {
+    var finData = finSheet.getDataRange().getValues();
+    if (finData.length > 1) {
+      var finHeaders = finData[0].map(function(h) { return String(h).trim(); });
+      var paidCol = indexOfHeader(finHeaders, ['paidToDate', 'paid']);
+      var netCol = indexOfHeader(finHeaders, ['netPayable', 'net', 'baseFee']);
+      
+      for (var r = 1; r < finData.length; r++) {
+        var row = finData[r];
+        if (isRowEmpty(row)) continue;
+        var paid = parseFloat(row[paidCol]) || 0;
+        var net = parseFloat(row[netCol]) || 0;
+        
+        revenue += paid;
+        pendingDues += Math.max(0, net - paid);
+      }
+    }
   }
 
   return {
     success: true,
     totalCandidates: totalCandidates,
     placedCount: placedCount,
-    activeCount: activeCount,
-    inTraining: totalCandidates - placedCount,
-    pendingBGV: pendingBGV,
-    clearedBGV: clearedBGV,
-    branchCounts: branchCounts,
-    courseCounts: courseCounts,
-    placementRate: totalCandidates > 0 ? Math.round((placedCount / totalCandidates) * 100) : 0,
+    revenue: revenue,
+    pendingDues: pendingDues,
     timestamp: new Date().toISOString()
   };
 }
-
 
 // ============================================================
 // HELPER FUNCTIONS
 // ============================================================
 
-/**
- * mapFormColumns — Flexibly maps PyCRM_New_Joinee column headers
- * to our expected field names. Handles variations like:
- *   "NAME", "Full Name", "Candidate Name" → fullName
- *   "MOB NO.", "Phone", "Mobile" → phone
- *   etc.
- * 
- * Returns an object with field→columnIndex mappings.
- */
-function mapFormColumns(headers) {
-  var lowerHeaders = headers.map(function(h) { return String(h).toLowerCase().trim(); });
-
-  return {
-    timestamp: findCol(lowerHeaders, ['timestamp', 'time', 'date', 'submitted']),
-    fullName:  findCol(lowerHeaders, ['name', 'full name', 'fullname', 'candidate name', 'student name']),
-    email:     findCol(lowerHeaders, ['email', 'e-mail', 'email id', 'mail', 'email address']),
-    phone:     findCol(lowerHeaders, ['mob no', 'mob no.', 'mobile', 'phone', 'contact', 'contact no', 'contact number', 'mobile no', 'mobile number', 'phone number', 'mob']),
-    course:    findCol(lowerHeaders, ['course', 'program', 'course name', 'interested course']),
-    branch:    findCol(lowerHeaders, ['branch', 'center', 'location', 'branch name', 'preferred branch']),
-    dob:       findCol(lowerHeaders, ['dob', 'date of birth', 'birth date', 'birthday', 'd.o.b']),
-    address:   findCol(lowerHeaders, ['address', 'city', 'location', 'residential address', 'current address'])
-  };
-}
-
-/**
- * findCol — Finds the first column index matching any of the given patterns.
- * Uses substring matching for flexibility.
- */
-function findCol(lowerHeaders, patterns) {
-  // Exact match first
-  for (var p = 0; p < patterns.length; p++) {
-    for (var h = 0; h < lowerHeaders.length; h++) {
-      if (lowerHeaders[h] === patterns[p]) return h;
+function getMappedValue(data, keys) {
+  for (var i = 0; i < keys.length; i++) {
+    var k = String(keys[i]).trim().toLowerCase();
+    for (var dKey in data) {
+      if (String(dKey).trim().toLowerCase() === k) {
+        var val = data[dKey];
+        var strVal = Array.isArray(val) ? val[0] : val;
+        return String(strVal || '').trim();
+      }
     }
   }
-  // Substring match as fallback
+  return '';
+}
+
+function indexOfHeader(headers, patterns) {
+  var lower = headers.map(function(h) { return String(h).toLowerCase().trim(); });
+  for (var p = 0; p < patterns.length; p++) {
+    for (var h = 0; h < lower.length; h++) {
+      if (lower[h] === patterns[p]) return h;
+    }
+  }
   for (var p2 = 0; p2 < patterns.length; p2++) {
-    for (var h2 = 0; h2 < lowerHeaders.length; h2++) {
-      if (lowerHeaders[h2].indexOf(patterns[p2]) >= 0) return h2;
+    for (var h2 = 0; h2 < lower.length; h2++) {
+      if (lower[h2].indexOf(patterns[p2]) >= 0) return h2;
     }
   }
   return -1;
 }
 
-/**
- * indexOfHeader — Find column index in master headers for a field.
- */
-function indexOfHeader(headers, patterns) {
-  var lower = headers.map(function(h) { return String(h).toLowerCase().trim(); });
-  return findCol(lower, patterns);
-}
-
-/** Get value from row at mapped column index, return '' if not found */
 function getVal(row, colIndex) {
   if (colIndex < 0 || colIndex >= row.length) return '';
   var val = row[colIndex];
@@ -489,21 +498,18 @@ function getVal(row, colIndex) {
   return String(val).trim();
 }
 
-/** Normalize a string value for comparison (lowercase, trimmed) */
 function normalizeValue(val) {
   return String(val).toLowerCase().trim();
 }
 
-/** Normalize phone: strip all non-digit chars, take last 10 digits */
 function normalizePhone(val) {
   var digits = String(val).replace(/\D/g, '');
   if (digits.length > 10) {
-    digits = digits.slice(-10); // Take last 10 digits (remove country code)
+    digits = digits.slice(-10); 
   }
   return digits;
 }
 
-/** Format a date value to YYYY-MM-DD string */
 function formatDate(val) {
   if (!val) return '';
   if (val instanceof Date) {
@@ -512,7 +518,6 @@ function formatDate(val) {
   return String(val).trim();
 }
 
-/** Check if an entire row is empty */
 function isRowEmpty(row) {
   for (var i = 0; i < row.length; i++) {
     if (row[i] !== '' && row[i] !== null && row[i] !== undefined) return false;

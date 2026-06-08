@@ -31,6 +31,7 @@ interface AppState {
   lastSyncTimestamp: string | null;
   lastSyncResult: SyncResult | null;
   dataSource: 'gas' | 'local' | 'mock';
+  dashboardMetrics: DashboardMetrics | null;
 
   // Actions
   setSearchQuery: (q: string) => void;
@@ -57,7 +58,8 @@ interface AppState {
   login: (email: string, password: string) => boolean;
   logout: () => void;
   fetchInitialData: () => Promise<void>;
-  triggerSync: () => Promise<SyncResult | null>;
+  syncCandidates: () => Promise<SyncResult | null>;
+  refreshDashboard: () => Promise<void>;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -79,176 +81,7 @@ const createDefaultFinancials = (): Candidate['financials'] => [
   { pipelineType: 'placement', baseFee: 100000, adjustments: [], paidToDate: 0 },
 ];
 
-const mockCandidates: Candidate[] = [
-  {
-    id: 'c1',
-    fullName: 'Rahul Sharma',
-    email: 'rahul.sharma@email.com',
-    phone: '+91 98765 43210',
-    batchName: 'Batch 4',
-    dateOfBirth: '1995-03-15',
-    address: '42, MG Road, Bangalore, Karnataka 560001',
-    branch: 'Bangalore',
-    course: 'Full Stack',
-    dateOfJoining: '2025-01-10',
-    currentStatus: 'active',
-    bgvStatus: 'pending',
-    placed: false,
-    pastEmployment: ['TCS', 'Infosys'],
-    documentsReceived: { offerLetter: true, appraisals: true, payslips: false, relievingLetter: true, counterOffer: false },
-    documentsApplied: { offerLetter: true, appraisals: false, payslips: true, relievingLetter: false, counterOffer: false },
-    financials: createDefaultFinancials(),
-  },
-  {
-    id: 'c2',
-    fullName: 'Priya Patel',
-    email: 'priya.patel@email.com',
-    phone: '+91 87654 32109',
-    batchName: 'Batch 5',
-    dateOfBirth: '1997-08-22',
-    address: '15, Park Street, Mumbai, Maharashtra 400001',
-    branch: 'Online',
-    course: 'Python Core',
-    dateOfJoining: '2025-02-05',
-    currentStatus: 'active',
-    bgvStatus: 'in-review',
-    placed: false,
-    pastEmployment: ['Cognizant', 'Wipro'],
-    documentsReceived: { offerLetter: true, appraisals: false, payslips: true, relievingLetter: false, counterOffer: false },
-    documentsApplied: { offerLetter: true, appraisals: true, payslips: true, relievingLetter: true, counterOffer: false },
-    financials: createDefaultFinancials(),
-  },
-  {
-    id: 'c3',
-    fullName: 'Amit Kumar',
-    email: 'amit.kumar@email.com',
-    phone: '+91 76543 21098',
-    batchName: 'Batch 3',
-    dateOfBirth: '1993-11-05',
-    address: '78, Salt Lake, Kolkata, West Bengal 700091',
-    branch: 'Chennai',
-    course: 'Python Core',
-    dateOfJoining: '2024-12-01',
-    currentStatus: 'active',
-    bgvStatus: 'cleared',
-    placed: true,
-    placedCompany: 'Google India',
-    pastEmployment: ['HCL', 'Tech Mahindra', 'Accenture'],
-    documentsReceived: { offerLetter: true, appraisals: true, payslips: true, relievingLetter: true, counterOffer: true },
-    documentsApplied: { offerLetter: true, appraisals: true, payslips: true, relievingLetter: true, counterOffer: true },
-    financials: createDefaultFinancials(),
-  },
-  {
-    id: 'c4',
-    fullName: 'Sneha Reddy',
-    email: 'sneha.reddy@email.com',
-    phone: '+91 65432 10987',
-    batchName: 'Batch 6',
-    dateOfBirth: '1996-06-18',
-    address: '33, Jubilee Hills, Hyderabad, Telangana 500033',
-    branch: 'Bangalore',
-    course: 'Full Stack',
-    dateOfJoining: '2025-03-01',
-    currentStatus: 'active',
-    bgvStatus: 'pending',
-    placed: false,
-    pastEmployment: ['Capgemini'],
-    documentsReceived: { offerLetter: false, appraisals: false, payslips: false, relievingLetter: false, counterOffer: false },
-    documentsApplied: { offerLetter: true, appraisals: false, payslips: false, relievingLetter: false, counterOffer: false },
-    financials: createDefaultFinancials(),
-  },
-  {
-    id: 'c5',
-    fullName: 'Vikram Iyer',
-    email: 'vikram.iyer@email.com',
-    phone: '+91 54321 09876',
-    batchName: 'Batch 4',
-    dateOfBirth: '1994-01-30',
-    address: '91, Anna Nagar, Chennai, Tamil Nadu 600040',
-    branch: 'Chennai',
-    course: 'Full Stack',
-    dateOfJoining: '2025-01-20',
-    currentStatus: 'active',
-    bgvStatus: 'cleared',
-    placed: true,
-    placedCompany: 'Microsoft India',
-    pastEmployment: ['IBM', 'Deloitte'],
-    documentsReceived: { offerLetter: true, appraisals: true, payslips: true, relievingLetter: true, counterOffer: false },
-    documentsApplied: { offerLetter: true, appraisals: true, payslips: true, relievingLetter: true, counterOffer: false },
-    financials: createDefaultFinancials(),
-  },
-  {
-    id: 'c6',
-    fullName: 'Neha Gupta',
-    email: 'neha.gupta@email.com',
-    phone: '+91 43210 98765',
-    batchName: 'Batch 7',
-    dateOfBirth: '1998-04-12',
-    address: '55, Rajouri Garden, Delhi, 110027',
-    branch: 'Online',
-    course: 'Python Core',
-    dateOfJoining: '2025-03-10',
-    currentStatus: 'active',
-    bgvStatus: 'pending',
-    placed: false,
-    pastEmployment: [],
-    documentsReceived: { offerLetter: false, appraisals: false, payslips: false, relievingLetter: false, counterOffer: false },
-    documentsApplied: { offerLetter: false, appraisals: false, payslips: false, relievingLetter: false, counterOffer: false },
-    financials: createDefaultFinancials(),
-  },
-];
-
-const mockTracked: TrackedCandidate[] = [
-  { candidateId: 'c4', status: 'form-pending', payloadType: 'new-registration', email: 'sneha.reddy@email.com', name: 'Sneha Reddy', timestamp: minsAgo(5) },
-  { candidateId: 'c2', status: 'bgv-submitted', payloadType: 'bgv-form', email: 'priya.patel@email.com', name: 'Priya Patel', timestamp: minsAgo(45) },
-  { candidateId: 'c6', status: 'form-pending', payloadType: 'bgv-form', email: 'neha.gupta@email.com', name: 'Neha Gupta', timestamp: minsAgo(120) },
-];
-
-const mockLogs: AuditLogEntry[] = [
-  {
-    id: 'l1',
-    candidateId: 'c1',
-    logType: 'structural',
-    description: 'Applied discount: Corporate Waiver (-Rs.2,000)',
-    reason: 'Branch Manager approved early-bird corporate waiver',
-    userStamp: 'HR-A',
-    timestamp: '2025-01-10T10:30:00Z',
-  },
-  {
-    id: 'l2',
-    candidateId: 'c1',
-    logType: 'financial',
-    description: 'Payment received: Rs.4,500 for Registration',
-    userStamp: 'HR-A',
-    timestamp: '2025-01-15T14:20:00Z',
-  },
-  {
-    id: 'l3',
-    candidateId: 'c1',
-    logType: 'structural',
-    description: 'Updated base fee: Registration from Rs.5,000 to Rs.4,500',
-    reason: 'Negotiated discount with candidate family',
-    userStamp: 'HR-B',
-    timestamp: '2025-02-01T09:15:00Z',
-  },
-  {
-    id: 'l4',
-    candidateId: 'c1',
-    logType: 'bgv',
-    description: 'BGV status changed to Pending',
-    userStamp: 'HR-A',
-    timestamp: '2025-01-20T11:00:00Z',
-  },
-  {
-    id: 'l5',
-    candidateId: 'c1',
-    logType: 'financial',
-    description: 'Payment received: Rs.25,000 for Course Fee',
-    userStamp: 'HR-A',
-    timestamp: '2025-02-10T16:45:00Z',
-  },
-];
-
+// Mock data has been permanently removed per requirements.
 const defaultSettings: AppSettings = {
   bgvTeamEmail: 'bgv-team@pythonhr.com',
   hrCCEmail: 'hr@pythonhr.com',
@@ -269,6 +102,17 @@ const defaultSettings: AppSettings = {
     auditLogs: '',
     settings: '',
   },
+};
+
+const loadSavedSettings = (): AppSettings => {
+  if (typeof window === 'undefined') return defaultSettings;
+  try {
+    const saved = localStorage.getItem('pycrm-settings');
+    if (saved) return { ...defaultSettings, ...JSON.parse(saved) };
+  } catch (err) {
+    console.warn('Failed to parse saved settings', err);
+  }
+  return defaultSettings;
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -316,9 +160,9 @@ function mapGasRowToCandidate(row: Record<string, string>): Candidate {
 // STORE
 // ─────────────────────────────────────────────────────────────
 export const useStore = create<AppState>((set, get) => ({
-  candidates: mockCandidates,
-  trackedCandidates: mockTracked,
-  auditLogs: mockLogs,
+  candidates: [],
+  trackedCandidates: [],
+  auditLogs: [],
   paymentRecords: [],
   activeProfileId: null,
   searchQuery: '',
@@ -326,7 +170,7 @@ export const useStore = create<AppState>((set, get) => ({
   branchFilter: 'all',
   courseFilter: 'all',
   placementFilter: 'all',
-  settings: defaultSettings,
+  settings: loadSavedSettings(),
   themeMode: getInitialThemeMode(),
   globalEditMode: false,
   sidebarOpen: false,
@@ -339,7 +183,8 @@ export const useStore = create<AppState>((set, get) => ({
   syncStatus: 'idle',
   lastSyncTimestamp: null,
   lastSyncResult: null,
-  dataSource: 'mock',
+  dataSource: 'gas',
+  dashboardMetrics: null,
 
   // ─── Data fetching ──────────────────────────────────────────
   fetchInitialData: async () => {
@@ -402,35 +247,38 @@ export const useStore = create<AppState>((set, get) => ({
       set({ syncStatus: 'success', lastSyncTimestamp: new Date().toISOString(), isFetchingData: false });
 
     } catch (err) {
-      console.warn('[store] GAS fetch failed, falling back to mock data:', err);
-
-      // Only load mocks if we're currently showing mocks (don't overwrite real data on transient errors)
-      if (get().dataSource === 'mock') {
-        set({
-          candidates: mockCandidates,
-          trackedCandidates: mockTracked,
-          auditLogs: mockLogs,
-          dataSource: 'mock',
-        });
-      }
+      // Completely removed fallback to mock data per requirements
+      set({ syncStatus: 'error', isFetchingData: false });
 
       set({ syncStatus: 'error', isFetchingData: false });
     }
   },
 
   // ─── Manual sync trigger ────────────────────────────────────
-  triggerSync: async () => {
+  syncCandidates: async () => {
     set({ syncStatus: 'syncing' });
     try {
-      const result = await sheetsApi.syncNewJoinees();
+      const result = await sheetsApi.syncCandidates();
       // After sync, refresh the full data
       await get().fetchInitialData();
+      await get().refreshDashboard();
       set({ lastSyncResult: result });
       return result;
     } catch (err) {
       set({ syncStatus: 'error' });
-      console.error('[store] triggerSync failed:', err);
+      console.error('[store] syncCandidates failed:', err);
       return null;
+    }
+  },
+
+  refreshDashboard: async () => {
+    try {
+      const metrics = await sheetsApi.getDashboardMetrics();
+      if (metrics && metrics.success) {
+        set({ dashboardMetrics: metrics });
+      }
+    } catch (err) {
+      console.error('[store] refreshDashboard failed:', err);
     }
   },
 
@@ -492,9 +340,9 @@ export const useStore = create<AppState>((set, get) => ({
 
   // ─── Settings ───────────────────────────────────────────────
   updateSettings: (settings) => {
-    // Persist GAS URL to localStorage for sheetsApi to read
-    if (settings.gasWebAppUrl && typeof window !== 'undefined') {
+    if (typeof window !== 'undefined') {
       window.localStorage.setItem('pycrm-gas-url', settings.gasWebAppUrl);
+      window.localStorage.setItem('pycrm-settings', JSON.stringify(settings));
     }
     set({ settings });
   },
@@ -520,8 +368,9 @@ export const useStore = create<AppState>((set, get) => ({
       results = results.filter((c) =>
         c.fullName.toLowerCase().includes(q) ||
         c.email.toLowerCase().includes(q) ||
-        c.phone.replace(/[^\d]/g, '').includes(sanitizedPhone) ||
-        c.batchName.toLowerCase().includes(q)
+        (sanitizedPhone && c.phone.replace(/[^\d]/g, '').includes(sanitizedPhone)) ||
+        c.branch.toLowerCase().includes(q) ||
+        c.course.toLowerCase().includes(q)
       );
     }
 

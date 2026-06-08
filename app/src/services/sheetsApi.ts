@@ -61,13 +61,15 @@ export interface DashboardMetrics {
   branchCounts: Record<string, number>;
   courseCounts: Record<string, number>;
   placementRate: number;
+  revenue?: number;
+  pendingDues?: number;
   timestamp: string;
 }
 
 export const sheetsApi = {
   /**
    * Fetch all candidate data from Google Apps Script.
-   * This calls ?action=getData which also triggers a sync automatically.
+   * This calls ?action=getCandidates which also triggers a sync automatically.
    * Falls back to local Express server if GAS fails.
    */
   fetchAllData: async (): Promise<GASDataResponse> => {
@@ -75,7 +77,7 @@ export const sheetsApi = {
 
     // Try GAS first
     try {
-      const url = `${gasUrl}?action=getData&t=${Date.now()}`;
+      const url = `${gasUrl}?action=getCandidates&t=${Date.now()}`;
       const response = await fetchWithTimeout(url, {}, 30000);
       if (!response.ok) throw new Error(`GAS returned ${response.status}`);
       const data = await response.json();
@@ -109,10 +111,10 @@ export const sheetsApi = {
    * Trigger a sync of PyCRM_New_Joinee → Master_Candidates.
    * Returns sync results (how many new, skipped, etc.)
    */
-  syncNewJoinees: async (): Promise<SyncResult> => {
+  syncCandidates: async (): Promise<SyncResult> => {
     const gasUrl = getGasUrl();
     try {
-      const url = `${gasUrl}?action=syncNewJoinees&t=${Date.now()}`;
+      const url = `${gasUrl}?action=syncMasterCandidates&t=${Date.now()}`;
       const response = await fetchWithTimeout(url, {}, 30000);
       if (!response.ok) throw new Error(`Sync failed: ${response.status}`);
       const result = await response.json();

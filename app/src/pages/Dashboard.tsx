@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, FileText, Shield, Send, ClipboardList, Clock, Pencil, Check, X, Plus, Download, Database, RefreshCw, CloudDownload } from 'lucide-react';
 import { useStore } from '@/store/useStore';
@@ -21,7 +21,7 @@ export default function Dashboard() {
   const {
     candidates, auditLogs, trackedCandidates, settings,
     updateSettings, addTrackedCandidate, updateTrackedStatus, showToast,
-    fetchInitialData, triggerSync,
+    fetchInitialData, syncCandidates, refreshDashboard,
     syncStatus, lastSyncTimestamp, lastSyncResult, dataSource,
   } = useStore();
   const [email, setEmail] = useState('');
@@ -37,6 +37,23 @@ export default function Dashboard() {
   const [reviewCandidate, setReviewCandidate] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Poll for new candidates every 30 seconds
+  useEffect(() => {
+    refreshDashboard();
+    const interval = setInterval(async () => {
+      try {
+        const result = await syncCandidates();
+        if (result && result.synced > 0) {
+          showToast(`New candidate added! Synced ${result.synced} new entries.`, 'success');
+        }
+      } catch (err) {
+        console.error('Auto-refresh failed', err);
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [syncCandidates, refreshDashboard, showToast]);
 
   const validateEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
   const isContactMail = selectedToggle === 'contact-mail';
@@ -124,38 +141,22 @@ export default function Dashboard() {
       throw new Error('MISSING_GAS_URL');
     }
 
-    const GAS_WINDOW_NAME = 'pycrm_google_send';
-    const sendWindow = window.open('', GAS_WINDOW_NAME);
-    
-    if (!sendWindow) {
-      throw new Error('POPUP_BLOCKED');
-    }
+    const formData = new URLSearchParams();
+    formData.append('to', toEmail);
+    formData.append('cc', ccEmail);
+    formData.append('formType', formType);
+    formData.append('formLink', formLink);
 
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = settings.gasWebAppUrl;
-    form.target = GAS_WINDOW_NAME;
-    form.style.cssText = 'position:absolute;width:0;height:0;visibility:hidden;';
-
-    const addField = (key: string, value: string) => {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = key;
-      input.value = value;
-      form.appendChild(input);
-    };
-
-    addField('to', toEmail);
-    addField('cc', ccEmail);
-    addField('formType', formType);
-    addField('formLink', formLink);
-
-    document.body.appendChild(form);
-    form.submit();
-
-    setTimeout(() => {
-      if (form.parentNode) form.remove();
-    }, 1000);
+    // Using no-cors mode prevents the browser from blocking the request due to CORS
+    // It silently sends the POST request to Google Apps Script in the background.
+    fetch(settings.gasWebAppUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString()
+    }).catch(err => console.error("Error dispatching email:", err));
   };
 
   const handleSend = async () => {
@@ -177,7 +178,7 @@ export default function Dashboard() {
 
     try {
       if (selectedToggle === 'new-registration') {
-        const formLink = 'https://forms.gle/LfD5SxxYXDqFGMwn6';
+        const formLink = settings.googleSheetLinks.registrationForm || 'https://forms.gle/LfD5SxxYXDqFGMwn6';
 
         submitToGoogleWindow(
           email.trim(), 
@@ -185,9 +186,9 @@ export default function Dashboard() {
           'Registration', 
           formLink
         );
-        showToast('Google opened in new tab to dispatch mail.');
+        showToast('Registration link dispatched invisibly in the background.');
       } else if (selectedToggle === 'bgv-form') {
-        const formLink = settings.googleSheetLinks.bgvResponses || 'https://forms.gle/LfD5SxxYXDqFGMwn6'; 
+        const formLink = settings.googleSheetLinks.bgvForm || 'https://forms.gle/LfD5SxxYXDqFGMwn6'; 
 
         submitToGoogleWindow(
           email.trim(), 
@@ -195,7 +196,7 @@ export default function Dashboard() {
           'BGV', 
           formLink
         );
-        showToast('Google opened in new tab to dispatch BGV mail.');
+        showToast('BGV link dispatched invisibly in the background.');
       } else {
         // Simulate async dispatch for other types
         await new Promise((r) => setTimeout(r, 800));
@@ -285,7 +286,7 @@ export default function Dashboard() {
   const handleRefreshData = async () => {
     setIsRefreshing(true);
     try {
-      const result = await triggerSync();
+      const result = await syncCandidates();
       if (result && result.synced > 0) {
         showToast(`Synced ${result.synced} new candidate${result.synced > 1 ? 's' : ''} from Google Form!`);
       } else if (result) {
@@ -466,10 +467,10 @@ export default function Dashboard() {
           <CandidateSearchPanel />
         </motion.div>
 
-        {/* Two-Column Widescreen Dashboard Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-10 items-start">
-          {/* Main Action Console (Left Column) */}
-          <div className="lg:col-span-2 space-y-8">
+        {/* Single-Column Dashboard Layout */}
+        <div className="w-full max-w-[1000px] mx-auto mt-10">
+          {/* Main Action Console */}
+          <div className="w-full space-y-8">
             {/* Push Panel */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -719,208 +720,7 @@ export default function Dashboard() {
               </div>
             </motion.div>
 
-            {/* Google Sheets Sync Panel */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.35 }}
-            >
-              <div className="bg-cc-base-surface border border-cc-gridline rounded-lg p-6 shadow-2xl relative overflow-hidden backdrop-blur-md">
-                <div className="flex items-center justify-between gap-2.5 mb-4 pb-3 border-b border-cc-gridline/50">
-                  <div className="flex items-center gap-2.5">
-                    <CloudDownload size={15} className="text-cc-warm-text" />
-                    <span className="section-header">GOOGLE SHEETS SYNC</span>
-                  </div>
-                  {/* Live sync status badge */}
-                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border font-mono text-[9px] uppercase tracking-wider ${
-                    syncStatus === 'syncing'  ? 'border-cc-gold/40 bg-cc-gold/10 text-cc-gold' :
-                    syncStatus === 'success'  ? 'border-cc-green/40 bg-cc-green/10 text-cc-green' :
-                    syncStatus === 'error'    ? 'border-cc-danger/40 bg-cc-danger/10 text-cc-danger' :
-                    'border-cc-gridline bg-cc-base-elevated text-cc-text-low'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                      syncStatus === 'syncing' ? 'bg-cc-gold animate-pulse' :
-                      syncStatus === 'success' ? 'bg-cc-green' :
-                      syncStatus === 'error'   ? 'bg-cc-danger' : 'bg-cc-text-low'
-                    }`} />
-                    {syncStatus === 'syncing' ? 'Syncing...' :
-                     syncStatus === 'success' ? 'Synced' :
-                     syncStatus === 'error'   ? 'Sync Error' : 'Idle'}
-                  </span>
-                </div>
 
-                <p className="font-sans text-[13px] text-cc-text-mid mb-4">
-                  Syncs new candidates from <strong className="text-cc-text-high">PyCRM_New_Joinee</strong> sheet into Master_Candidates automatically on load and every 30 seconds.
-                </p>
-
-                {/* Sync stats row */}
-                {lastSyncResult && (
-                  <div className="flex items-center gap-4 mb-4 p-3 rounded bg-cc-base-elevated border border-cc-gridline/50">
-                    <div className="text-center">
-                      <p className="font-mono text-base font-light text-cc-green">{lastSyncResult.synced}</p>
-                      <p className="font-mono text-[9px] text-cc-text-low uppercase tracking-wider">New Added</p>
-                    </div>
-                    <div className="w-px h-8 bg-cc-gridline" />
-                    <div className="text-center">
-                      <p className="font-mono text-base font-light text-cc-text-mid">{lastSyncResult.skipped}</p>
-                      <p className="font-mono text-[9px] text-cc-text-low uppercase tracking-wider">Duplicates</p>
-                    </div>
-                    <div className="w-px h-8 bg-cc-gridline" />
-                    <div className="text-center">
-                      <p className="font-mono text-base font-light text-cc-text-high">{lastSyncResult.total}</p>
-                      <p className="font-mono text-[9px] text-cc-text-low uppercase tracking-wider">Total Rows</p>
-                    </div>
-                    {lastSyncTimestamp && (
-                      <div className="ml-auto text-right">
-                        <p className="font-mono text-[10px] text-cc-text-low">Last sync</p>
-                        <p className="font-mono text-[10px] text-cc-text-mid">{formatSyncTime(lastSyncTimestamp)}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleSyncGoogleSheet}
-                    disabled={isSyncing || syncStatus === 'syncing'}
-                    className="flex items-center gap-2 h-10 px-6 bg-[#5B8FBF] text-white font-mono text-[10px] font-semibold uppercase tracking-wider rounded hover:brightness-110 hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(91,143,191,0.25)] active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                  >
-                    <CloudDownload size={14} className={isSyncing ? 'animate-pulse' : ''} />
-                    {isSyncing ? 'SYNCING...' : 'SYNC FROM SHEET URL'}
-                  </button>
-
-                  <button
-                    onClick={handleRefreshData}
-                    disabled={isRefreshing || syncStatus === 'syncing'}
-                    className="flex items-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary disabled:opacity-60 transition-all cursor-pointer"
-                  >
-                    <RefreshCw size={13} className={isRefreshing || syncStatus === 'syncing' ? 'animate-spin' : ''} />
-                    {isRefreshing ? 'SYNCING...' : 'SYNC & REFRESH'}
-                  </button>
-                </div>
-
-                {dataSource === 'mock' && (
-                  <p className="mt-3 micro-text text-cc-gold">
-                    ⚠ Showing demo data. Configure GAS URL in Settings or check your Google Apps Script deployment.
-                  </p>
-                )}
-                {dataSource === 'gas' && (
-                  <p className="mt-3 micro-text text-cc-green">
-                    ✓ Live data from Google Sheets · {candidates.length} candidates loaded
-                  </p>
-                )}
-                {syncStatus === 'error' && dataSource !== 'mock' && (
-                  <p className="mt-3 micro-text text-cc-danger">
-                    ✕ Last sync failed. Check GAS deployment and network.
-                  </p>
-                )}
-              </div>
-            </motion.div>
-          </div>
-
-          {/* Tracked Candidates (Right Sidebar Column) */}
-          <div className="lg:col-span-1">
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.4, delay: 0.25 }}
-            >
-              <div className="bg-cc-base-surface border border-cc-gridline rounded-lg p-6 shadow-2xl flex flex-col backdrop-blur-md h-[468px]">
-                {/* Section Header */}
-                <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-cc-gridline/50">
-                  <div className="flex items-center gap-2">
-                    <ClipboardList size={15} className="text-cc-warm-text" />
-                    <span className="section-header">TRACKED CANDIDATES</span>
-                  </div>
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center font-mono text-[10px] font-semibold ${trackedCandidates.length > 0 ? 'bg-cc-warm-primary text-white' : 'bg-cc-base-elevated-strong text-cc-text-low'}`}>
-                    {trackedCandidates.length}
-                  </span>
-                </div>
-
-                {/* List container scrollable */}
-                <div className="flex-1 overflow-y-auto pr-1 -mr-2">
-                  {trackedCandidates.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full py-16 text-center">
-                      <ClipboardList size={40} className="text-cc-text-low mb-3 opacity-60" />
-                      <p className="font-sans text-[13px] text-cc-text-mid">No tracked candidates</p>
-                      <p className="micro-text text-cc-text-low mt-1">Enter an email above to start tracking</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <AnimatePresence>
-                        {trackedCandidates.map((tc) => (
-                          <motion.div
-                            key={tc.candidateId}
-                            layout
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ duration: 0.25 }}
-                            className="bg-cc-base-elevated border border-cc-gridline/50 rounded p-3 hover:border-cc-warm-primary/50 transition-all flex flex-col gap-2 relative group"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="font-sans text-[13px] font-semibold text-cc-text-high truncate flex-1 leading-snug">
-                                {tc.name || tc.email}
-                              </p>
-                              <div
-                                className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1.5"
-                                style={{
-                                  backgroundColor:
-                                    tc.status === 'form-pending' ? '#C9A84C' :
-                                    tc.status === 'bgv-submitted' ? '#5B8FBF' :
-                                    tc.status === 'contacts-sent' ? '#5BA87C' : '#5BA87C',
-                                }}
-                              />
-                            </div>
-                            
-                            {tc.name && (
-                              <p className="micro-text text-cc-text-low truncate -mt-1 leading-none">
-                                {tc.email}
-                              </p>
-                            )}
-
-                            <div className="flex items-center justify-between gap-2 mt-1">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                {tc.status === 'form-pending' && (
-                                  <StatusBadge label="FORM PENDING" variant="amber" />
-                                )}
-                                {tc.status === 'bgv-submitted' && (
-                                  <StatusBadge label="IN REVIEW" variant="blue" />
-                                )}
-                                {tc.status === 'contacts-sent' && (
-                                  <>
-                                    <StatusBadge label="SENT" variant="green" />
-                                    <StatusBadge label={`${tc.contactCount || 0} ITEMS`} variant="neutral" />
-                                  </>
-                                )}
-                                {tc.status === 'cleared' && (
-                                  <StatusBadge label="CLEARED" variant="green" />
-                                )}
-                              </div>
-                              
-                              <div className="flex items-center gap-2">
-                                {tc.status === 'bgv-submitted' && (
-                                  <button
-                                    onClick={() => handleReview(tc.candidateId)}
-                                    className="px-2 py-0.5 bg-cc-blue text-white font-mono text-[9px] font-semibold uppercase rounded hover:brightness-110 transition-all cursor-pointer"
-                                  >
-                                    REVIEW
-                                  </button>
-                                )}
-                                <div className="flex items-center gap-1 text-cc-text-low micro-text">
-                                  <Clock size={10} />
-                                  <span>{getRelativeTime(tc.timestamp)}</span>
-                                </div>
-                              </div>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </AnimatePresence>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </motion.div>
           </div>
         </div>
       </div>

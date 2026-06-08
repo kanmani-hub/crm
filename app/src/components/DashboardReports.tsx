@@ -4,20 +4,21 @@ import { TrendingUp, Users, Award, ShieldCheck, PieChart, BarChart3, ArrowDownCi
 import { useStore } from '@/store/useStore';
 
 export default function DashboardReports() {
-  const { candidates, trackedCandidates } = useStore();
+  const { candidates, trackedCandidates, dashboardMetrics } = useStore();
   const [activeTab, setActiveTab] = useState<'financial' | 'funnel' | 'branch'>('financial');
 
   // ----------------------------------------------------
   // DATA CALCULATIONS
   // ----------------------------------------------------
-  const totalCandidates = candidates.length;
-  const placedCandidates = candidates.filter(c => c.placed).length;
-  const inTraining = candidates.filter(c => !c.placed).length;
+  // Use API values from dashboardMetrics as requested, falling back to local computation
+  const totalCandidates = dashboardMetrics?.totalCandidates ?? candidates.length;
+  const placedCandidates = dashboardMetrics?.placedCount ?? candidates.filter(c => c.placed).length;
+  const inTraining = dashboardMetrics?.inTraining ?? candidates.filter(c => !c.placed).length;
   const pendingForms = trackedCandidates.filter(t => t.status === 'form-pending').length;
 
   let totalProjected = 0;
-  let totalPaid = 0;
-  let totalDues = 0;
+  let localTotalPaid = 0;
+  let localTotalDues = 0;
 
   const pipelineSummary: Record<string, { base: number; paid: number; dues: number }> = {
     registration: { base: 0, paid: 0, dues: 0 },
@@ -27,7 +28,7 @@ export default function DashboardReports() {
   };
 
   const branchSummary: Record<string, { total: number; placed: number }> = {};
-  const courseSummary: Record<string, number> = {};
+  const courseSummary: Record<string, number> = dashboardMetrics?.courseCounts ?? {};
 
   candidates.forEach(c => {
     // Branch breakdown
@@ -38,11 +39,13 @@ export default function DashboardReports() {
     branchSummary[branch].total += 1;
     if (c.placed) branchSummary[branch].placed += 1;
 
-    // Course breakdown
-    const course = c.course || 'Unknown';
-    courseSummary[course] = (courseSummary[course] || 0) + 1;
+    if (!dashboardMetrics) {
+      // If no dashboardMetrics, build courseSummary locally
+      const course = c.course || 'Unknown';
+      courseSummary[course] = (courseSummary[course] || 0) + 1;
+    }
 
-    // Financial breakdown
+    // Financial breakdown for detailed UI
     c.financials.forEach(f => {
       const type = f.pipelineType;
       if (pipelineSummary[type]) {
@@ -55,13 +58,16 @@ export default function DashboardReports() {
         pipelineSummary[type].dues += dues;
 
         totalProjected += net;
-        totalPaid += f.paidToDate;
-        totalDues += dues;
+        localTotalPaid += f.paidToDate;
+        localTotalDues += dues;
       }
     });
   });
 
-  const placementRate = totalCandidates > 0 ? Math.round((placedCandidates / totalCandidates) * 100) : 0;
+  // Override with API values if they exist, otherwise use local calculations
+  const totalPaid = dashboardMetrics?.revenue ?? localTotalPaid;
+  const totalDues = dashboardMetrics?.pendingDues ?? localTotalDues;
+  const placementRate = dashboardMetrics?.placementRate ?? (totalCandidates > 0 ? Math.round((placedCandidates / totalCandidates) * 100) : 0);
   const formattedCurrency = (val: number) => `₹${val.toLocaleString('en-IN')}`;
 
   // SVG Helper dimensions

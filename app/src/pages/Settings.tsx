@@ -10,6 +10,11 @@ import { sheetsApi } from '@/services/sheetsApi';
 type ArraySettingKey = 'courses' | 'branches';
 type SheetLinkKey = keyof AppSettings['googleSheetLinks'];
 
+const formLinkFields: { key: SheetLinkKey; label: string; hint: string }[] = [
+  { key: 'registrationForm', label: 'Registration Form Link', hint: 'Link to the Google Form (docs.google.com/forms)' },
+  { key: 'bgvForm', label: 'BGV Form Link', hint: 'Link to the BGV Form (docs.google.com/forms)' },
+];
+
 const sheetLinkFields: { key: SheetLinkKey; label: string; hint: string }[] = [
   { key: 'candidateMaster', label: 'Candidate Master Sheet', hint: 'Primary candidate profile and status data' },
   { key: 'registrations', label: 'Registration Responses Sheet', hint: 'New registration form submissions' },
@@ -253,21 +258,48 @@ export default function SettingsPage() {
           <section className="bg-cc-base-surface border border-cc-gridline rounded p-6 shadow-inset-glow">
             <div className="flex items-center gap-2 mb-4">
               <Link2 size={15} className="text-cc-warm-text" />
-              <h3 className="section-header">GOOGLE SHEET LINKS</h3>
+              <h3 className="section-header">GOOGLE FORM LINKS</h3>
+            </div>
+            <div className="space-y-4 mb-8">
+              {formLinkFields.map((field) => {
+                const value = formSettings.googleSheetLinks[field.key] || '';
+                const isInvalid = value.length > 0 && (!value.includes('docs.google.com/forms') && !value.includes('forms.gle'));
+                return (
+                  <SettingsInput
+                    key={field.key}
+                    label={field.label}
+                    hint={isInvalid ? '⚠️ Must be a valid Google Form URL' : field.hint}
+                    type="url"
+                    value={value}
+                    placeholder="https://docs.google.com/forms/d/..."
+                    onChange={(val) => updateSheetLink(field.key, val)}
+                    hasError={isInvalid}
+                  />
+                );
+              })}
             </div>
 
+            <div className="flex items-center gap-2 mb-4">
+              <Link2 size={15} className="text-cc-warm-text" />
+              <h3 className="section-header">GOOGLE SHEET LINKS</h3>
+            </div>
             <div className="space-y-4">
-              {sheetLinkFields.map((field) => (
-                <SettingsInput
-                  key={field.key}
-                  label={field.label}
-                  hint={field.hint}
-                  type="url"
-                  value={formSettings.googleSheetLinks[field.key]}
-                  placeholder="https://docs.google.com/spreadsheets/d/..."
-                  onChange={(value) => updateSheetLink(field.key, value)}
-                />
-              ))}
+              {sheetLinkFields.map((field) => {
+                const value = formSettings.googleSheetLinks[field.key] || '';
+                const isInvalid = value.length > 0 && !value.includes('docs.google.com/spreadsheets');
+                return (
+                  <SettingsInput
+                    key={field.key}
+                    label={field.label}
+                    hint={isInvalid ? '⚠️ Must be a valid Google Spreadsheet URL' : field.hint}
+                    type="url"
+                    value={value}
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    onChange={(val) => updateSheetLink(field.key, val)}
+                    hasError={isInvalid}
+                  />
+                );
+              })}
             </div>
           </section>
         </motion.div>
@@ -303,6 +335,7 @@ function SettingsInput({
   value,
   placeholder,
   onChange,
+  hasError = false,
 }: {
   label: string;
   hint?: string;
@@ -310,10 +343,11 @@ function SettingsInput({
   value: string;
   placeholder?: string;
   onChange: (value: string) => void;
+  hasError?: boolean;
 }) {
   return (
     <div>
-      <label className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-cc-text-mid block mb-1.5">
+      <label className={`font-mono text-[10px] font-medium uppercase tracking-[0.06em] block mb-1.5 ${hasError ? 'text-cc-danger' : 'text-cc-text-mid'}`}>
         {label}
       </label>
       <input
@@ -321,9 +355,13 @@ function SettingsInput({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full h-10 bg-cc-base-elevated border border-cc-gridline rounded px-3 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-low focus:border-cc-warm-primary focus:outline-none transition-colors"
+        className={`w-full h-10 bg-cc-base-elevated border rounded px-3 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-low focus:outline-none transition-colors ${
+          hasError 
+            ? 'border-cc-danger focus:border-cc-danger shadow-[0_0_0_1px_rgba(239,68,68,0.2)]' 
+            : 'border-cc-gridline focus:border-cc-warm-primary'
+        }`}
       />
-      {hint && <p className="mt-1 text-[11px] text-cc-text-mid">{hint}</p>}
+      {hint && <p className={`mt-1 text-[11px] ${hasError ? 'text-cc-danger font-medium' : 'text-cc-text-mid'}`}>{hint}</p>}
     </div>
   );
 }

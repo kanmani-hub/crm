@@ -42,6 +42,10 @@ export default function SettingsPage() {
     : [];
 
   const addCCEmail = () => {
+    console.log("Add clicked (CC Email)");
+    console.log("Value:", newCCEmail);
+    console.log("Settings before:", formSettings);
+
     const trimmed = newCCEmail.trim();
     if (!trimmed) return;
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -49,18 +53,21 @@ export default function SettingsPage() {
       showToast('Enter a valid email address', 'error');
       return;
     }
-    if (ccEmailsList.some((email) => email.toLowerCase() === trimmed.toLowerCase())) {
+    const currentList = Array.isArray(ccEmailsList) ? ccEmailsList : [];
+    if (currentList.some((email) => email && email.toLowerCase() === trimmed.toLowerCase())) {
       showToast('Email already added', 'info');
       return;
     }
-    const updatedList = [...ccEmailsList, trimmed];
+    const updatedList = [...currentList, trimmed];
     updateField('hrCCEmail', updatedList.join(', '));
     setNewCCEmail('');
+    showToast(`Added ${trimmed} to CC list`, 'success');
   };
 
   const removeCCEmail = (index: number) => {
     const updatedList = ccEmailsList.filter((_, i) => i !== index);
     updateField('hrCCEmail', updatedList.join(', '));
+    showToast('Removed email from CC list', 'info');
   };
 
   useEffect(() => {
@@ -76,6 +83,8 @@ export default function SettingsPage() {
         bgvTeamEmail: formSettings.bgvTeamEmail,
         hrCCEmail: formSettings.hrCCEmail,
         gasWebAppUrl: formSettings.gasWebAppUrl,
+        courses: Array.isArray(formSettings.courses) ? formSettings.courses.join(',') : '',
+        branches: Array.isArray(formSettings.branches) ? formSettings.branches.join(',') : '',
       };
       const sheetLinksToSave: Record<string, string> = { ...formSettings.googleSheetLinks };
       
@@ -109,17 +118,34 @@ export default function SettingsPage() {
   };
 
   const addOption = (key: ArraySettingKey, value: string, clear: () => void) => {
+    console.log("Add clicked");
+    console.log("Value:", value);
+    console.log("Settings before:", formSettings);
+
     const nextValue = value.trim();
     if (!nextValue) return;
+    
     setFormSettings((s) => {
-      if (s[key].some((item) => item.toLowerCase() === nextValue.toLowerCase())) return s;
-      return { ...s, [key]: [...s[key], nextValue] };
+      const currentArray = Array.isArray(s[key]) ? s[key] : [];
+      if (currentArray.some((item) => item && item.toLowerCase() === nextValue.toLowerCase())) {
+        showToast(`${nextValue} is already in the list`, 'info');
+        return s;
+      }
+      const updatedSettings = { ...s, [key]: [...currentArray, nextValue] };
+      console.log("Settings after:", updatedSettings);
+      return updatedSettings;
     });
+    
     clear();
+    showToast(`Added ${nextValue}`, 'success');
   };
 
   const removeOption = (key: ArraySettingKey, i: number) => {
-    setFormSettings((s) => ({ ...s, [key]: s[key].filter((_, idx) => idx !== i) }));
+    setFormSettings((s) => {
+      const currentArray = Array.isArray(s[key]) ? s[key] : [];
+      return { ...s, [key]: currentArray.filter((_, idx) => idx !== i) };
+    });
+    showToast('Item removed', 'info');
   };
 
   return (

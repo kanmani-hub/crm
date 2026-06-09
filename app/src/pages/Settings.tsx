@@ -307,7 +307,7 @@ export default function SettingsPage() {
         <div className="mt-6 flex items-center gap-3">
           <motion.button
             onClick={handleSave}
-            disabled={!hasChanges || isSaving}
+            disabled={isSaving}
             whileTap={{ scale: 0.98 }}
             className={`px-8 py-3 font-mono text-xs font-semibold uppercase tracking-wider rounded transition-all ${
               saved

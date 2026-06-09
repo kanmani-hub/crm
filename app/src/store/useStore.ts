@@ -128,11 +128,11 @@ function mapGasRowToCandidate(row: Record<string, string>): Candidate {
 
   return {
     id: row.candidateId || `c_${Math.random().toString(36).slice(2)}`,
-    fullName: row.fullName || '',
+    fullName: row.FullName || row.fullName || row.name || '',
     email: row.email || '',
     phone: row.phone || '',
     batchName: row.batchName || 'Batch 1',
-    dateOfBirth: row.dateOfBirth || '',
+    dateOfBirth: row.dateOfBirth || row.dob || '',
     address: row.address || '',
     branch: row.branch || 'Online',
     course: row.course || 'Python Core',
@@ -198,7 +198,7 @@ export const useStore = create<AppState>((set, get) => ({
       if (response.success && Array.isArray(response.candidates) && response.candidates.length > 0) {
         // Filter out completely empty rows (GAS can return them)
         const validRows = response.candidates.filter(
-          (row) => row.candidateId || row.fullName || row.email
+          (row) => row.candidateId || row.FullName || row.fullName || row.email
         );
 
         const mappedCandidates = validRows.map(mapGasRowToCandidate);
@@ -321,11 +321,20 @@ export const useStore = create<AppState>((set, get) => ({
   })),
 
   // ─── Candidate mutations ─────────────────────────────────────
-  updateCandidate: (id, updates) => set((s) => ({
-    candidates: s.candidates.map((c) =>
-      c.id === id ? { ...c, ...updates } : c
-    ),
-  })),
+  updateCandidate: (id, updates) => {
+    // 1. Update local state immediately for fast UI
+    set((s) => ({
+      candidates: s.candidates.map((c) =>
+        c.id === id ? { ...c, ...updates } : c
+      ),
+    }));
+
+    // 2. Fire and forget the API call to update Google Sheets / local db
+    sheetsApi.updateCandidate(id, updates).catch((err) => {
+      console.error('[store] Failed to save update to GAS:', err);
+      // Optional: Add a toast mechanism here to alert the user of save failure
+    });
+  },
   updateFinancialPipeline: (candidateId, pipelineType, updates) => set((s) => ({
     candidates: s.candidates.map((c) => {
       if (c.id !== candidateId) return c;

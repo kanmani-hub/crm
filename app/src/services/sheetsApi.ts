@@ -249,6 +249,47 @@ export const sheetsApi = {
   },
 
   /**
+   * Update candidate in Master_Candidates directly
+   */
+  updateCandidate: async (candidateId: string, updates: Record<string, unknown>) => {
+    const gasUrl = getGasUrl();
+    try {
+      const response = await fetchWithTimeout(gasUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          action: 'updateCandidate',
+          candidateId: candidateId,
+          updates: JSON.stringify(updates),
+        }),
+      }, 15000);
+      
+      if (!response.ok) throw new Error(`GAS updateCandidate failed: ${response.status}`);
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Failed to update candidate in GAS');
+      return data;
+    } catch (error) {
+      console.warn('[sheetsApi] GAS updateCandidate failed, trying local server:', error);
+      
+      // Fallback to local server if GAS fails
+      try {
+        const localResponse = await fetchWithTimeout(`${LOCAL_API_BASE}/update`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sheetName: 'Master_Candidates', id: candidateId, values: updates }),
+        }, 10000);
+        if (!localResponse.ok) throw new Error('Local server update failed');
+        return await localResponse.json();
+      } catch (localError) {
+        console.error('[sheetsApi] Both GAS and local update failed:', localError);
+        throw localError;
+      }
+    }
+  },
+
+  /**
    * Import a candidate manually.
    */
   importCandidate: async (data: {

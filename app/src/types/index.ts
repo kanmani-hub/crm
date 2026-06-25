@@ -1,6 +1,6 @@
 export type PipelineType = 'registration' | 'course' | 'document' | 'placement';
 
-export type BGVStatus = 'pending' | 'in-review' | 'cleared';
+export type BGVStatus = 'pending' | 'submitted' | 'cleared';
 
 export type TrackedStatus = 'form-pending' | 'bgv-submitted' | 'contacts-sent' | 'cleared';
 
@@ -55,6 +55,13 @@ export interface Candidate {
   dateOfJoining?: string;
   currentStatus: 'active' | 'inactive' | 'completed';
   bgvStatus: BGVStatus;
+  bgvSubmittedAt?: string;
+  bgvDob?: string;
+  bgvFatherName?: string;
+  bgvAddress?: string;
+  bgvCourseName?: string;
+  bgvBatch?: string;
+  bgvDocumentAmount?: string;
   placed: boolean;
   placedCompany?: string;
   pastEmployment: string[];
@@ -76,14 +83,20 @@ export interface TrackedCandidate {
 }
 
 export interface PaymentRecord {
-  id: string;
+  id: string;           // paymentId
   candidateId: string;
-  pipelineType: PipelineType;
+  candidateName: string;
+  paymentType: string;  // "Registration" | "Course Fee" | "Document Fee" | "Placement Fee"
   amount: number;
+  paymentDate: string;
+  remarks?: string;
+  createdAt: string;
+  // Legacy / compat fields
+  pipelineType?: PipelineType;
   transactionRef?: string;
   notes?: string;
-  timestamp: string;
-  userStamp: string;
+  timestamp?: string;
+  userStamp?: string;
 }
 
 export interface FilterChip {
@@ -102,6 +115,7 @@ export interface AppSettings {
   contactEmails: string[];
   courses: string[];
   branches: string[];
+  isOfflineMode?: boolean;
   googleSheetLinks: {
     candidateMaster: string;
     registrations: string;
@@ -113,3 +127,19 @@ export interface AppSettings {
     bgvForm?: string;
   };
 }
+
+export interface DashboardMetrics {
+  success?: boolean;
+  totalCandidates: number;
+  newJoinees: number;
+  bgvPending: number;
+  bgvCompleted: number;
+  placedCount: number;
+  revenue: number;
+  paymentsReceived: number;
+  pendingDues: number;
+  documentsPending: number;
+  addedToday: number;
+  timestamp?: string;
+}
+

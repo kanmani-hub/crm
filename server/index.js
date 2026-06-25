@@ -44,6 +44,7 @@ app.get('/api/data', (req, res) => {
 // Helpers for relational excel updates
 function getHeaders(sheet) {
   const headers = [];
+  if (!sheet || !sheet['!ref']) return headers;
   const range = xlsx.utils.decode_range(sheet['!ref'] || 'A1:A1');
   for (let col = range.s.c; col <= range.e.c; col++) {
     const cellAddress = xlsx.utils.encode_cell({ r: 0, c: col });
@@ -53,6 +54,14 @@ function getHeaders(sheet) {
     }
   }
   return headers;
+}
+
+function ensureSheetExists(workbook, sheetName, defaultHeaders) {
+  if (!workbook.Sheets[sheetName]) {
+    console.log(`Creating sheet ${sheetName} locally...`);
+    workbook.Sheets[sheetName] = xlsx.utils.json_to_sheet([], { header: defaultHeaders });
+    xlsx.utils.book_append_sheet(workbook, workbook.Sheets[sheetName], sheetName);
+  }
 }
 
 function getActualSheetName(sheetName, workbook) {
@@ -220,7 +229,7 @@ app.post('/api/append', (req, res) => {
         const candidateId = candidate.candidateId;
 
         // 1. Update candidate parameters in Master_Candidates
-        candidate.bgvStatus = 'in-review';
+        candidate.bgvStatus = 'submitted';
         candidate.trackedStatus = 'bgv-submitted';
         if (rowObject.currentAddress) candidate.address = rowObject.currentAddress;
         candidate.updatedAt = nowString;

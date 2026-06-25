@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Link2, Plus, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Link2, Plus, X, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import type { AppSettings } from '@/types';
 import TopNavigationBar from '@/components/TopNavigationBar';
@@ -16,12 +16,12 @@ const formLinkFields: { key: SheetLinkKey; label: string; hint: string }[] = [
 ];
 
 const sheetLinkFields: { key: SheetLinkKey; label: string; hint: string }[] = [
-  { key: 'candidateMaster', label: 'Candidate Master Sheet', hint: 'Primary candidate profile and status data' },
-  { key: 'registrations', label: 'Registration Responses Sheet', hint: 'New registration form submissions' },
-  { key: 'bgvResponses', label: 'BGV Responses Sheet', hint: 'Background verification form submissions' },
-  { key: 'financials', label: 'Financial Pipeline Sheet', hint: 'Fee, payment, discount, and due records' },
-  { key: 'auditLogs', label: 'Audit Logs Sheet', hint: 'Structural, BGV, and financial change history' },
-  { key: 'settings', label: 'Settings Sheet', hint: 'Dropdowns, branches, and app configuration' },
+  { key: 'candidateMaster', label: 'Open Master Sheet', hint: 'Primary candidate profile and status data' },
+  { key: 'registrations', label: 'Open Registration Responses', hint: 'New registration form submissions' },
+  { key: 'bgvResponses', label: 'Open BGV Responses', hint: 'Background verification form submissions' },
+  { key: 'financials', label: 'Open Financial Ledger', hint: 'Fee, payment, discount, and due records' },
+  { key: 'auditLogs', label: 'Open Audit Logs', hint: 'Structural, BGV, and financial change history' },
+  { key: 'settings', label: 'Open Settings Sheet', hint: 'Dropdowns, branches, and app configuration' },
 ];
 
 export default function SettingsPage() {
@@ -33,6 +33,7 @@ export default function SettingsPage() {
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const ccEmailsList = formSettings.hrCCEmail
     ? formSettings.hrCCEmail
@@ -171,17 +172,16 @@ export default function SettingsPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]"
+          className="grid gap-6 lg:grid-cols-2"
         >
-          <section className="bg-cc-base-surface border border-cc-gridline rounded p-6 shadow-inset-glow">
-            <h3 className="section-header mb-4">GENERAL CONFIGURATION</h3>
+          {/* CARD 1: COMMUNICATION */}
+          <section className="bg-cc-base-surface border border-cc-gridline rounded-lg p-6 shadow-inset-glow flex flex-col">
+            <h3 className="section-header mb-5 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-cc-warm-primary rounded-full"></span>
+              COMMUNICATION SETTINGS
+            </h3>
 
-            <div className="space-y-4">
-              <SettingsInput
-                label="Organization Name"
-                value={formSettings.orgName}
-                onChange={(value) => updateField('orgName', value)}
-              />
+            <div className="space-y-6 flex-1">
               <SettingsInput
                 label="BGV Team Mail ID"
                 type="email"
@@ -189,9 +189,9 @@ export default function SettingsPage() {
                 onChange={(value) => updateField('bgvTeamEmail', value)}
               />
               
-              <div className="border-t border-cc-gridline/40 pt-4 mt-2">
-                <label className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-cc-text-mid block mb-1.5">
-                  HR CC Mail IDs (Registration)
+              <div className="border-t border-cc-gridline/40 pt-5">
+                <label className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-cc-text-mid block mb-2">
+                  HR CC Mail IDs
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -242,19 +242,72 @@ export default function SettingsPage() {
                   Receives copies of dispatched registration forms
                 </p>
               </div>
+            </div>
+          </section>
+
+          {/* CARD 2: BACKEND INTEGRATION */}
+          <section className="bg-cc-base-surface border border-cc-gridline rounded-lg p-6 shadow-inset-glow flex flex-col">
+            <h3 className="section-header mb-5 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-cc-green rounded-full"></span>
+              BACKEND INTEGRATION
+            </h3>
+            
+            <div className="space-y-6 flex-1">
+              <div className="flex items-center justify-between bg-cc-base-elevated border border-cc-gridline rounded px-4 py-3">
+                <div>
+                  <h4 className="font-mono text-[11px] font-semibold text-cc-text-high">Offline Mode (Local Server)</h4>
+                  <p className="font-sans text-[11px] text-cc-text-mid mt-0.5">Disconnect from Google Sheets and use local data only</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={!!formSettings.isOfflineMode}
+                    onChange={(e) => updateField('isOfflineMode', e.target.checked)}
+                  />
+                  <div className="w-9 h-5 bg-cc-base-surface border border-cc-gridline rounded-full peer peer-checked:bg-cc-warm-primary peer-checked:border-cc-warm-primary transition-all after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
+                </label>
+              </div>
 
               <SettingsInput
                 label="Google Apps Script Web App URL"
                 type="url"
                 value={formSettings.gasWebAppUrl}
-                hint="Required for sending form links without backend server"
+                hint="Used as the cloud backend for Google Sheets sync and form dispatch"
                 placeholder="https://script.google.com/macros/s/.../exec"
                 onChange={(value) => updateField('gasWebAppUrl', value)}
+                disabled={formSettings.isOfflineMode}
               />
-            </div>
 
-            <div className="mt-8">
-              <h3 className="section-header mb-4">DROPDOWNS</h3>
+              <div className="border-t border-cc-gridline/40 pt-5 space-y-5">
+                {formLinkFields.map((field) => {
+                  const value = formSettings.googleSheetLinks[field.key] || '';
+                  const isInvalid = value.length > 0 && (!value.includes('docs.google.com/forms') && !value.includes('forms.gle'));
+                  return (
+                    <SettingsInput
+                      key={field.key}
+                      label={field.label}
+                      hint={isInvalid ? '⚠️ Must be a valid Google Form URL' : field.hint}
+                      type="url"
+                      value={value}
+                      placeholder="https://docs.google.com/forms/d/..."
+                      onChange={(val) => updateSheetLink(field.key, val)}
+                      hasError={isInvalid}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+
+          {/* CARD 3: DROPDOWN MANAGEMENT */}
+          <section className="bg-cc-base-surface border border-cc-gridline rounded-lg p-6 shadow-inset-glow lg:col-span-2">
+            <h3 className="section-header mb-5 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-cc-blue rounded-full"></span>
+              DROPDOWN MANAGEMENT
+            </h3>
+            
+            <div className="grid gap-8 lg:grid-cols-2">
               <OptionEditor
                 label="Courses Dropdown"
                 value={newCourse}
@@ -265,70 +318,69 @@ export default function SettingsPage() {
                 onAdd={() => addOption('courses', newCourse, () => setNewCourse(''))}
                 onRemove={(i) => removeOption('courses', i)}
               />
-              <div className="mt-5">
-                <OptionEditor
-                  label="Branches Dropdown"
-                  value={newBranch}
-                  options={formSettings.branches}
-                  placeholder="Add branch"
-                  tone="blue"
-                  onValueChange={setNewBranch}
-                  onAdd={() => addOption('branches', newBranch, () => setNewBranch(''))}
-                  onRemove={(i) => removeOption('branches', i)}
-                />
-              </div>
-            </div>
-
-          </section>
-
-          <section className="bg-cc-base-surface border border-cc-gridline rounded p-6 shadow-inset-glow">
-            <div className="flex items-center gap-2 mb-4">
-              <Link2 size={15} className="text-cc-warm-text" />
-              <h3 className="section-header">GOOGLE FORM LINKS</h3>
-            </div>
-            <div className="space-y-4 mb-8">
-              {formLinkFields.map((field) => {
-                const value = formSettings.googleSheetLinks[field.key] || '';
-                const isInvalid = value.length > 0 && (!value.includes('docs.google.com/forms') && !value.includes('forms.gle'));
-                return (
-                  <SettingsInput
-                    key={field.key}
-                    label={field.label}
-                    hint={isInvalid ? '⚠️ Must be a valid Google Form URL' : field.hint}
-                    type="url"
-                    value={value}
-                    placeholder="https://docs.google.com/forms/d/..."
-                    onChange={(val) => updateSheetLink(field.key, val)}
-                    hasError={isInvalid}
-                  />
-                );
-              })}
-            </div>
-
-            <div className="flex items-center gap-2 mb-4">
-              <Link2 size={15} className="text-cc-warm-text" />
-              <h3 className="section-header">GOOGLE SHEET LINKS</h3>
-            </div>
-            <div className="space-y-4">
-              {sheetLinkFields.map((field) => {
-                const value = formSettings.googleSheetLinks[field.key] || '';
-                const isInvalid = value.length > 0 && !value.includes('docs.google.com/spreadsheets');
-                return (
-                  <SettingsInput
-                    key={field.key}
-                    label={field.label}
-                    hint={isInvalid ? '⚠️ Must be a valid Google Spreadsheet URL' : field.hint}
-                    type="url"
-                    value={value}
-                    placeholder="https://docs.google.com/spreadsheets/d/..."
-                    onChange={(val) => updateSheetLink(field.key, val)}
-                    hasError={isInvalid}
-                  />
-                );
-              })}
+              <OptionEditor
+                label="Branches Dropdown"
+                value={newBranch}
+                options={formSettings.branches}
+                placeholder="Add branch"
+                tone="blue"
+                onValueChange={setNewBranch}
+                onAdd={() => addOption('branches', newBranch, () => setNewBranch(''))}
+                onRemove={(i) => removeOption('branches', i)}
+              />
             </div>
           </section>
         </motion.div>
+
+        {/* ADVANCED ADMIN LINKS (COLLAPSIBLE) */}
+        <div className="mt-8 border-t border-cc-gridline/50 pt-6">
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-cc-text-mid hover:text-cc-text-high transition-colors focus:outline-none"
+          >
+            {showAdvanced ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            Advanced Admin Links
+          </button>
+          
+          <AnimatePresence>
+            {showAdvanced && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {sheetLinkFields.map((field) => {
+                    const url = formSettings.googleSheetLinks[field.key] || '';
+                    return (
+                      <a
+                        key={field.key}
+                        href={url || '#'}
+                        target={url ? '_blank' : '_self'}
+                        rel="noopener noreferrer"
+                        className={`flex items-center justify-between p-3 border rounded font-mono text-[11px] transition-colors ${
+                          url 
+                            ? 'border-cc-gridline bg-cc-base-surface text-cc-text-high hover:border-cc-warm-primary hover:bg-cc-base-elevated'
+                            : 'border-cc-gridline/30 bg-cc-base-surface/50 text-cc-text-low cursor-not-allowed opacity-60'
+                        }`}
+                        onClick={(e) => {
+                          if (!url) {
+                            e.preventDefault();
+                            showToast('Link not configured in database', 'info');
+                          }
+                        }}
+                      >
+                        <span className="truncate mr-2">{field.label}</span>
+                        <ExternalLink size={14} className="shrink-0" />
+                      </a>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         <div className="mt-6 flex items-center gap-3">
           <motion.button

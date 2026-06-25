@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Candidate, TrackedCandidate, AppSettings, PipelineType, AuditLogEntry, PaymentRecord } from '@/types';
+import type { Candidate, TrackedCandidate, AppSettings, PipelineType, AuditLogEntry, PaymentRecord, DashboardMetrics } from '@/types';
 import { sheetsApi, type SyncResult } from '@/services/sheetsApi';
 
 type ThemeMode = 'command' | 'sunny';
@@ -51,7 +51,7 @@ interface AppState {
   updateCandidate: (id: string, updates: Partial<Candidate>) => void;
   updateFinancialPipeline: (candidateId: string, pipelineType: PipelineType, updates: Partial<Candidate['financials'][0]>) => void;
   updateSettings: (settings: AppSettings) => void;
-  addPaymentRecord: (payment: PaymentRecord) => void;
+  addPaymentRecord: (payment: PaymentRecord) => Promise<{ success: boolean; error?: string }>;
   addAuditLog: (log: AuditLogEntry) => void;
   getCandidateById: (id: string) => Candidate | undefined;
   getFilteredCandidates: () => Candidate[];
@@ -60,14 +60,16 @@ interface AppState {
   fetchInitialData: () => Promise<void>;
   syncCandidates: () => Promise<SyncResult | null>;
   refreshDashboard: () => Promise<void>;
+  loadPaymentsForCandidate: (candidateId: string) => Promise<void>;
+  loadAuditLogs: () => Promise<void>;
+  rebuildFinancialLedger: () => Promise<{ success: boolean; error?: string; summary?: any }>;
+  
+  getCalculatedDashboardMetrics: () => DashboardMetrics;
 }
 
 // ─────────────────────────────────────────────────────────────
 // MOCK / FALLBACK DATA
 // ─────────────────────────────────────────────────────────────
-
-const now = new Date();
-const minsAgo = (m: number) => new Date(now.getTime() - m * 60000).toISOString();
 
 const getInitialThemeMode = (): ThemeMode => {
   if (typeof window === 'undefined') return 'command';
@@ -119,41 +121,72 @@ const loadSavedSettings = (): AppSettings => {
 // GAS → Candidate mapper
 // Converts a raw GAS row object (all strings) into a typed Candidate.
 // ─────────────────────────────────────────────────────────────
-function mapGasRowToCandidate(row: Record<string, string>): Candidate {
+function mapGasRowToCandidate(rawRow: Record<string, string>): Candidate {
   const toBool = (v: string) => String(v).toLowerCase() === 'true';
 
-  const financials: Candidate['financials'] = createDefaultFinancials();
-  // If GAS ever sends financial data, we'd map it here.
-  // For now, we use defaults since financials live in a separate sheet.
+  // Normalize all keys to lowercase with no spaces to handle unpredictable sheet headers
+  const row: Record<string, string> = {};
+  for (const [key, value] of Object.entries(rawRow)) {
+    const cleanKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+    row[cleanKey] = value;
+  }
 
-  return {
-    id: row.candidateId || `c_${Math.random().toString(36).slice(2)}`,
-    fullName: row.FullName || row.fullName || row.name || '',
-    email: row.email || '',
-    phone: row.phone || '',
-    batchName: row.batchName || 'Batch 1',
-    dateOfBirth: row.dateOfBirth || row.dob || '',
-    address: row.address || '',
-    branch: row.branch || 'Online',
-    course: row.course || 'Python Core',
-    dateOfJoining: row.dateOfJoining || '',
-    currentStatus: (row.currentStatus as Candidate['currentStatus']) || 'active',
-    bgvStatus: (row.bgvStatus as Candidate['bgvStatus']) || 'pending',
-    placed: toBool(row.placed),
-    placedCompany: row.placedCompany || undefined,
-    pastEmployment: [],
-    documentsReceived: {
-      offerLetter: false, appraisals: false, payslips: false,
-      relievingLetter: false, counterOffer: false,
-    },
-    documentsApplied: {
-      offerLetter: false, appraisals: false, payslips: false,
-      relievingLetter: false, counterOffer: false,
-    },
-    trackedStatus: (row.trackedStatus as Candidate['trackedStatus']) || undefined,
-    trackedAt: row.trackedAt || undefined,
-    financials,
-  };
+  const financials: Candidate['financials'] = createDefaultFinancials();
+
+    const parseJsonField = (val: any, defaultVal: any) => {
+      if (!val) return defaultVal;
+      try {
+        return { ...defaultVal, ...(typeof val === 'string' ? JSON.parse(val) : val) };
+      } catch {
+        return defaultVal;
+      }
+    };
+
+    const parseJsonArray = (val: any, defaultVal: any[]) => {
+      if (!val) return defaultVal;
+      try {
+        const parsed = typeof val === 'string' ? JSON.parse(val) : val;
+        return Array.isArray(parsed) ? parsed : defaultVal;
+      } catch {
+        return defaultVal;
+      }
+    };
+
+    return {
+      id: row.candidateId || row.candidateid || `c_${Math.random().toString(36).slice(2)}`,
+      fullName: row.fullName || row.fullname || row.name || '',
+      email: row.email || row.emailaddress || '',
+      phone: row.phone || row.phonenumber || row.mobno || '',
+      batchName: row.batchName || row.batchname || row.batch || 'Batch 1',
+      dateOfBirth: row.dateOfBirth || row.dateofbirth || row.dob || row.bgvDob || row.bgvdob || '',
+      address: row.address || '',
+      branch: row.branch || 'Online',
+      course: row.course || 'Python Core',
+      dateOfJoining: row.dateOfJoining || row.dateofjoining || row.doj || '',
+      currentStatus: (row.currentStatus as Candidate['currentStatus']) || (row.currentstatus as Candidate['currentStatus']) || 'active',
+      bgvStatus: ((row.bgvStatus || row.bgvstatus || 'pending').toLowerCase() as Candidate['bgvStatus']),
+      bgvSubmittedAt: row.bgvsubmittedat || undefined,
+      bgvDob: row.bgvdob || undefined,
+      bgvFatherName: row.bgvfathername || undefined,
+      bgvAddress: row.bgvaddress || undefined,
+      bgvCourseName: row.bgvcoursename || undefined,
+      bgvBatch: row.bgvbatch || undefined,
+      bgvDocumentAmount: row.bgvdocumentamount || undefined,
+      placed: toBool(row.placed),
+      placedCompany: row.placedcompany || undefined,
+      pastEmployment: parseJsonArray(row.pastemployment, []),
+      documentsReceived: parseJsonField(row.documentsreceived, {
+        offerLetter: false, appraisals: false, payslips: false,
+        relievingLetter: false, counterOffer: false,
+      }),
+      documentsApplied: parseJsonField(row.documentsapplied, {
+        offerLetter: false, appraisals: false, payslips: false,
+        relievingLetter: false, counterOffer: false,
+      }),
+      trackedStatus: (row.trackedstatus as Candidate['trackedStatus']) || undefined,
+      trackedAt: row.trackedat || undefined,
+      financials,
+    };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -185,23 +218,34 @@ export const useStore = create<AppState>((set, get) => ({
   lastSyncResult: null,
   dataSource: 'gas',
   dashboardMetrics: null,
+  
+  dateFilterType: 'all',
+  customDateRange: null,
+  dateFilterTarget: 'joining',
 
   // ─── Data fetching ──────────────────────────────────────────
   fetchInitialData: async () => {
-    // Avoid concurrent fetches
-    if (get().isFetchingData) return;
+    // Don't block if already fetching — allow refresh calls from Dashboard mount
+    if (get().isFetchingData) {
+      console.log('[store] fetchInitialData skipped — already in progress');
+      return;
+    }
     set({ isFetchingData: true, syncStatus: 'syncing' });
+
+    // Log which URL we're hitting so users can verify Settings
+    const gasUrl = typeof window !== 'undefined'
+      ? (window.localStorage.getItem('pycrm-gas-url') || get().settings.gasWebAppUrl || '(none)')
+      : '(server)';
+    console.log('[store] fetchInitialData using GAS URL:', gasUrl);
 
     try {
       const response = await sheetsApi.fetchAllData();
 
       if (response.success && Array.isArray(response.candidates) && response.candidates.length > 0) {
-        // Filter out completely empty rows (GAS can return them)
-        const validRows = response.candidates.filter(
-          (row) => row.candidateId || row.FullName || row.fullName || row.email
-        );
-
-        const mappedCandidates = validRows.map(mapGasRowToCandidate);
+        // Map all candidates using robust header normalization, then filter blanks
+        const mappedCandidates = response.candidates
+          .map(mapGasRowToCandidate)
+          .filter((c) => c.fullName || c.email || c.phone);
 
         // Build tracked list from candidates that have trackedStatus
         const trackedFromCandidates: TrackedCandidate[] = mappedCandidates
@@ -221,19 +265,53 @@ export const useStore = create<AppState>((set, get) => ({
         const manualTracked = existingTracked.filter((t) => !existingIds.has(t.candidateId));
         const mergedTracked = [...trackedFromCandidates, ...manualTracked];
 
+        const syncResult = response.sync || null;
+
+        // Process initial payments if returned
+        const mappedPayments: PaymentRecord[] = [];
+        if (response.payments && response.payments.length > 0) {
+          const pipelineTypeMap: Record<string, string> = {
+            'registration': 'registration', 'Registration': 'registration', 'Registration Fee': 'registration',
+            'course': 'course',             'course fee': 'course',         'Course Fee': 'course',
+            'document': 'document',         'document fee': 'document',     'Document Fee': 'document', 'Document': 'document',
+            'placement': 'placement',       'placement fee': 'placement',   'Placement Fee': 'placement', 'Placement': 'placement',
+          };
+          
+          response.payments.forEach((row) => {
+            const pipelineKey = pipelineTypeMap[row.paymentType || ''] || row.pipelineType || 'registration';
+            mappedPayments.push({
+              id: row.paymentId || `pay_${Math.random().toString(36).slice(2)}`,
+              candidateId: row.candidateId,
+              candidateName: row.candidateName || '',
+              paymentType: row.paymentType || pipelineKey,
+              amount: parseFloat(row.amount) || 0,
+              paymentDate: row.paymentDate || '',
+              remarks: row.remarks || '',
+              createdAt: row.createdAt || row.timestamp || '',
+              pipelineType: pipelineKey as import('@/types').PipelineType,
+              timestamp: row.createdAt || row.timestamp || '',
+              userStamp: row.userStamp || 'System',
+            });
+          });
+        }
+
         set({
           candidates: mappedCandidates,
           trackedCandidates: mergedTracked,
+          paymentRecords: mappedPayments,
           syncStatus: 'success',
           lastSyncTimestamp: response.timestamp || new Date().toISOString(),
-          lastSyncResult: response.sync || null,
-          dataSource: 'gas',
+          lastSyncResult: syncResult,
+          dataSource: get().settings.isOfflineMode ? 'local' : 'gas',
           isFetchingData: false,
         });
+        
+        get().loadAuditLogs();
 
-        if (response.sync && response.sync.synced > 0) {
+
+        if (syncResult && syncResult.synced > 0) {
           get().showToast(
-            `✓ ${response.sync.synced} new candidate${response.sync.synced > 1 ? 's' : ''} synced from Google Form`,
+            `✓ ${syncResult.synced} new candidate${syncResult.synced > 1 ? 's' : ''} synced from Google Form`,
             'success'
           );
         }
@@ -242,14 +320,19 @@ export const useStore = create<AppState>((set, get) => ({
         return;
       }
 
-      // GAS returned success=true but no candidates — fall through to mock
-      console.warn('[store] GAS returned no candidates, keeping current data');
+      if (!response.success) {
+        console.error('[store] GAS error:', response.error);
+        set({ syncStatus: 'error', isFetchingData: false });
+        get().showToast(`GAS Error: ${response.error || 'Unknown error'}`, 'error');
+        return;
+      }
+
+      // GAS returned success=true but no candidates
+      console.warn('[store] GAS returned no candidates. Response:', JSON.stringify(response).slice(0, 200));
       set({ syncStatus: 'success', lastSyncTimestamp: new Date().toISOString(), isFetchingData: false });
 
     } catch (err) {
-      // Completely removed fallback to mock data per requirements
-      set({ syncStatus: 'error', isFetchingData: false });
-
+      console.error('[store] fetchInitialData failed:', err);
       set({ syncStatus: 'error', isFetchingData: false });
     }
   },
@@ -262,6 +345,7 @@ export const useStore = create<AppState>((set, get) => ({
       // After sync, refresh the full data
       await get().fetchInitialData();
       await get().refreshDashboard();
+      await get().loadAuditLogs();
       set({ lastSyncResult: result });
       return result;
     } catch (err) {
@@ -282,7 +366,22 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // ─── Search & filter ────────────────────────────────────────
+  rebuildFinancialLedger: async () => {
+    try {
+      const response = await sheetsApi.rebuildFinancialLedger();
+      if (!response || !response.success) {
+        return { success: false, error: response?.error || 'Failed to rebuild ledger' };
+      }
+      // Re-fetch data to reflect the rebuilt ledger
+      await get().fetchInitialData();
+      return { success: true, summary: response.summary };
+    } catch (err: any) {
+      console.error('[store] Error rebuilding ledger:', err);
+      return { success: false, error: err.message || 'Error rebuilding ledger' };
+    }
+  },
+
+  // ─── Filters & Dashboard ────────────────────────────────────────
   setSearchQuery: (q) => set({ searchQuery: q }),
   clearSearchQuery: () => set({ searchQuery: '' }),
   toggleFilter: (filter) => set((s) => ({
@@ -335,34 +434,274 @@ export const useStore = create<AppState>((set, get) => ({
       // Optional: Add a toast mechanism here to alert the user of save failure
     });
   },
-  updateFinancialPipeline: (candidateId, pipelineType, updates) => set((s) => ({
-    candidates: s.candidates.map((c) => {
-      if (c.id !== candidateId) return c;
-      return {
-        ...c,
-        financials: c.financials.map((f) =>
-          f.pipelineType === pipelineType ? { ...f, ...updates } : f
-        ),
-      };
-    }),
-  })),
+  updateFinancialPipeline: (candidateId, pipelineType, updates) => {
+    // 1. Optimistic Update (UI)
+    set((s) => ({
+      candidates: s.candidates.map((c) => {
+        if (c.id !== candidateId) return c;
+        return {
+          ...c,
+          financials: c.financials.map((f) =>
+            f.pipelineType === pipelineType ? { ...f, ...updates } : f
+          ),
+        };
+      }),
+    }));
+
+    // 2. Persist to backend
+    const state = get();
+    const candidate = state.candidates.find(c => c.id === candidateId);
+    if (!candidate) return;
+    const pipeline = candidate.financials.find(f => f.pipelineType === pipelineType);
+    if (!pipeline) return;
+
+    sheetsApi.updateFinancialPipeline(
+      candidateId, 
+      pipelineType, 
+      pipeline.baseFee, 
+      pipeline.adjustments
+    ).catch(err => {
+      console.error('[store] Failed to save financial pipeline:', err);
+    });
+  },
 
   // ─── Settings ───────────────────────────────────────────────
   updateSettings: (settings) => {
+    const previousSettings = get().settings;
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('pycrm-gas-url', settings.gasWebAppUrl);
       window.localStorage.setItem('pycrm-settings', JSON.stringify(settings));
     }
-    set({ settings });
+    set({ settings, dataSource: settings.isOfflineMode ? 'local' : 'gas' });
+    
+    // Auto-refresh if the connection mode changes
+    if (previousSettings.isOfflineMode !== settings.isOfflineMode) {
+      get().fetchInitialData();
+    }
   },
 
   // ─── Financial & logs ───────────────────────────────────────
-  addPaymentRecord: (payment) => set((s) => ({
-    paymentRecords: [payment, ...s.paymentRecords],
-  })),
+  addPaymentRecord: async (payment) => {
+    // PRE-SAVE VALIDATION
+    if (!payment.candidateId || !payment.candidateName) {
+      return { success: false, error: 'Candidate ID or Name is missing.' };
+    }
+    if (!payment.pipelineType || !payment.paymentType) {
+      return { success: false, error: 'Payment Type or Pipeline is missing.' };
+    }
+    if (isNaN(payment.amount) || payment.amount <= 0) {
+      return { success: false, error: 'Payment amount must be greater than 0.' };
+    }
+    if (!payment.paymentDate) {
+      return { success: false, error: 'Payment date is missing.' };
+    }
+
+    // Map payment type label to pipeline key for local state update
+    const pipelineTypeMap: Record<string, string> = {
+      'Registration': 'registration',
+      'Registration Fee': 'registration',
+      'Course Fee': 'course',
+      'Document Fee': 'document',
+      'Document': 'document',
+      'Placement Fee': 'placement',
+      'Placement': 'placement',
+    };
+    const mappedType = pipelineTypeMap[payment.paymentType || ''];
+    const pipelineKey = payment.pipelineType || (mappedType as PipelineType) || 'registration';
+
+    // 1. Optimistic Update (will revert if GAS fails)
+    const originalCandidates = get().candidates;
+    const originalPaymentRecords = get().paymentRecords;
+
+    set((s) => ({
+      paymentRecords: [payment, ...s.paymentRecords],
+      candidates: s.candidates.map((c) => {
+        if (c.id !== payment.candidateId) return c;
+        return {
+          ...c,
+          financials: c.financials.map((f) => {
+            if (f.pipelineType !== pipelineKey) return f;
+            return { ...f, paidToDate: f.paidToDate + payment.amount };
+          }),
+        };
+      }),
+    }));
+
+    // 2. Persist to Google Sheets
+    const candidate = get().candidates.find((c) => c.id === payment.candidateId);
+    
+    const payload = {
+      candidateId:    payment.candidateId,
+      candidateName:  payment.candidateName || candidate?.fullName || '',
+      paymentType:    payment.paymentType || pipelineKey,
+      pipelineType:   pipelineKey,
+      amount:         payment.amount,
+      paymentDate:    payment.paymentDate,
+      remarks:        payment.remarks || payment.notes || '',
+      transactionRef: payment.transactionRef || '',
+      notes:          payment.notes || payment.remarks || '',
+      userStamp:      payment.userStamp || 'Python HR',
+      timestamp:      payment.timestamp || new Date().toISOString(),
+    };
+
+    console.log('--- [STEP 3a] useStore: Payload passed to sheetsApi ---', payload);
+
+    try {
+      await sheetsApi.addPayment(payload);
+      
+      // 3. Post-save refresh to ensure full consistency with GAS ledger
+      await get().loadPaymentsForCandidate(payment.candidateId);
+      await get().loadAuditLogs();
+      get().refreshDashboard(); // Refresh overall metrics
+      
+      return { success: true };
+    } catch (err: any) {
+      console.error('[store] Failed to save payment to GAS:', err);
+      // Revert optimistic update
+      set({ candidates: originalCandidates, paymentRecords: originalPaymentRecords });
+      return { success: false, error: err.message || 'Failed to sync to Google Sheets' };
+    }
+  },
   addAuditLog: (log) => set((s) => ({
     auditLogs: [log, ...s.auditLogs],
   })),
+
+  loadAuditLogs: async () => {
+    try {
+      const logs = await sheetsApi.getAuditLogsForCandidate('');
+      if (logs && logs.length > 0) {
+        const mappedLogs: AuditLogEntry[] = logs.map(row => {
+          let logType: 'financial' | 'structural' | 'bgv' = 'structural';
+          const act = (row.actionType || '').toLowerCase();
+          if (act.includes('payment')) logType = 'financial';
+          if (act.includes('bgv')) logType = 'bgv';
+          
+          let desc = row.actionType;
+          if (row.oldValue && row.newValue) {
+            desc += ` ${row.oldValue} → ${row.newValue}`;
+          } else if (row.newValue) {
+            desc += ` ${row.newValue}`;
+          }
+
+          return {
+            id: row.auditId || `log_${Date.now()}_${Math.random()}`,
+            candidateId: row.candidateId,
+            logType,
+            description: desc,
+            reason: '',
+            userStamp: row.user || 'System',
+            timestamp: row.timestamp || new Date().toISOString()
+          };
+        });
+
+        set({ auditLogs: mappedLogs.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) });
+      }
+    } catch (err) {
+      console.warn('[store] loadAuditLogs failed:', err);
+    }
+  },
+
+  // ─── Load real financials from GAS (Financial_Ledger) ──────────────
+  loadPaymentsForCandidate: async (candidateId) => {
+    try {
+      // ── PRIMARY: read from Financial_Ledger (authoritative, server-side calculated)
+      const ledgerRows = await sheetsApi.getFinancialsForCandidate(candidateId);
+
+      if (ledgerRows && ledgerRows.length > 0) {
+        // Build per-pipeline financial data from the ledger
+        set((s) => ({
+          candidates: s.candidates.map((c) => {
+            if (c.id !== candidateId) return c;
+            return {
+              ...c,
+              financials: c.financials.map((f) => {
+                // Find the matching ledger row for this pipelineType
+                const row = ledgerRows.find(
+                  (r) => r.pipelineType === f.pipelineType
+                );
+                if (!row) return f;
+                const baseFee          = parseFloat(row.baseFee)          || f.baseFee;
+                const totalAdj         = parseFloat(row.totalAdjustments) || 0;
+                const paidToDate       = parseFloat(row.paidToDate)       || 0;
+                
+                let adjustments = [];
+                if (row.adjustmentsJson) {
+                  try {
+                    adjustments = JSON.parse(row.adjustmentsJson);
+                  } catch (e) {
+                    console.warn('[store] Failed to parse adjustmentsJson', e);
+                  }
+                }
+                
+                if (adjustments.length === 0 && totalAdj !== 0) {
+                  adjustments = [{ id: 'server_adj', amount: totalAdj, label: 'Server adjustment', reason: '', createdAt: '', userStamp: '' }];
+                }
+                
+                return {
+                  ...f,
+                  baseFee,
+                  adjustments,
+                  paidToDate,
+                };
+              }),
+            };
+          }),
+        }));
+        console.log('[store] Financial_Ledger loaded for', candidateId, '-', ledgerRows.length, 'pipelines');
+        return;
+      }
+
+      // ── FALLBACK: if ledger is empty, sum from Payment_Records directly
+      const rows = await sheetsApi.getPaymentsForCandidate(candidateId);
+      if (!rows || rows.length === 0) return;
+
+      const pipelineTypeMap: Record<string, string> = {
+        'registration': 'registration', 'Registration': 'registration', 'Registration Fee': 'registration',
+        'course': 'course',             'course fee': 'course',         'Course Fee': 'course',
+        'document': 'document',         'document fee': 'document',     'Document Fee': 'document', 'Document': 'document',
+        'placement': 'placement',       'placement fee': 'placement',   'Placement Fee': 'placement', 'Placement': 'placement',
+      };
+
+      const totals: Record<string, number> = { registration: 0, course: 0, document: 0, placement: 0 };
+
+      const paymentRecords = rows.map((row) => {
+        const pipelineKey = pipelineTypeMap[row.paymentType || ''] || row.pipelineType || 'registration';
+        totals[pipelineKey] = (totals[pipelineKey] || 0) + (parseFloat(row.amount) || 0);
+        return {
+          id: row.paymentId || `pay_${Math.random().toString(36).slice(2)}`,
+          candidateId: row.candidateId || candidateId,
+          candidateName: row.candidateName || '',
+          paymentType: row.paymentType || pipelineKey,
+          amount: parseFloat(row.amount) || 0,
+          paymentDate: row.paymentDate || '',
+          remarks: row.remarks || '',
+          createdAt: row.createdAt || row.timestamp || '',
+          pipelineType: pipelineKey as import('@/types').PipelineType,
+          timestamp: row.createdAt || row.timestamp || '',
+          userStamp: 'Python HR',
+        };
+      });
+
+      set((s) => ({
+        paymentRecords: [
+          ...paymentRecords,
+          ...s.paymentRecords.filter((p) => p.candidateId !== candidateId),
+        ],
+        candidates: s.candidates.map((c) => {
+          if (c.id !== candidateId) return c;
+          return {
+            ...c,
+            financials: c.financials.map((f) => ({
+              ...f,
+              paidToDate: totals[f.pipelineType] ?? f.paidToDate,
+            })),
+          };
+        }),
+      }));
+    } catch (err) {
+      console.error('[store] loadPaymentsForCandidate failed:', err);
+    }
+  },
 
   // ─── Selectors ──────────────────────────────────────────────
   getCandidateById: (id) => get().candidates.find((c) => c.id === id),
@@ -379,7 +718,8 @@ export const useStore = create<AppState>((set, get) => ({
         c.email.toLowerCase().includes(q) ||
         (sanitizedPhone && c.phone.replace(/[^\d]/g, '').includes(sanitizedPhone)) ||
         c.branch.toLowerCase().includes(q) ||
-        c.course.toLowerCase().includes(q)
+        c.course.toLowerCase().includes(q) ||
+        c.batchName.toLowerCase().includes(q)
       );
     }
 
@@ -418,6 +758,64 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     return results;
+  },
+
+  getCalculatedDashboardMetrics: () => {
+    const { getFilteredCandidates, paymentRecords } = get();
+    const filteredCandidates = getFilteredCandidates();
+    
+    // Revenue is calculated based on payments made by the filtered candidates
+    let revenue = 0;
+    const candidateIds = new Set(filteredCandidates.map(c => c.id));
+    
+    paymentRecords.forEach(p => {
+      if (candidateIds.has(p.candidateId)) {
+        revenue += p.amount;
+      }
+    });
+
+    let pendingDues = 0;
+    let placedCount = 0;
+    let newJoinees = 0;
+    let bgvPending = 0;
+    let bgvCompleted = 0;
+    let addedToday = 0;
+    
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    
+    filteredCandidates.forEach(c => {
+      if (c.placed) placedCount++;
+      if (c.bgvStatus === 'pending' || c.bgvStatus === 'submitted') bgvPending++;
+      if (c.bgvStatus === 'cleared') bgvCompleted++;
+      
+      const doj = c.dateOfJoining ? new Date(c.dateOfJoining) : null;
+      if (doj && doj.getMonth() === now.getMonth() && doj.getFullYear() === now.getFullYear()) {
+        newJoinees++;
+      }
+      if (c.dateOfJoining && c.dateOfJoining.startsWith(todayStr)) {
+        addedToday++;
+      }
+      
+      c.financials.forEach(f => {
+        const netPayable = f.baseFee + f.adjustments.reduce((sum, a) => sum + a.amount, 0);
+        const due = netPayable - f.paidToDate;
+        if (due > 0) pendingDues += due;
+      });
+    });
+
+    return {
+      totalCandidates: filteredCandidates.length,
+      newJoinees,
+      bgvPending,
+      bgvCompleted,
+      placedCount,
+      revenue,
+      paymentsReceived: 0,
+      pendingDues,
+      documentsPending: 0,
+      addedToday
+    };
   },
 
   // ─── Auth ────────────────────────────────────────────────────

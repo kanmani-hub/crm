@@ -33,7 +33,7 @@ addSheet('Schema_Map', [
 // 2. Master_Candidates
 addSheet('Master_Candidates', [
   { candidateId: 'c1', fullName: 'Rahul Sharma', email: 'rahul.sharma@email.com', phone: '+91 98765 43210', batchName: 'Batch 4', dateOfBirth: '1995-03-15', address: '42, MG Road, Bangalore, Karnataka 560001', branch: 'Bangalore', course: 'Full Stack', dateOfJoining: '2025-01-10', currentStatus: 'active', bgvStatus: 'pending', placed: false, placedCompany: null, trackedStatus: null, trackedAt: null, createdAt: '2025-01-10', updatedAt: '2025-01-10' },
-  { candidateId: 'c2', fullName: 'Priya Patel', email: 'priya.patel@email.com', phone: '+91 87654 32109', batchName: 'Batch 5', dateOfBirth: '1997-08-22', address: '15, Park Street, Mumbai, Maharashtra 400001', branch: 'Online', course: 'Python Core', dateOfJoining: '2025-02-05', currentStatus: 'active', bgvStatus: 'in-review', placed: false, placedCompany: null, trackedStatus: null, trackedAt: null, createdAt: '2025-02-05', updatedAt: '2025-02-05' },
+  { candidateId: 'c2', fullName: 'Priya Patel', email: 'priya.patel@email.com', phone: '+91 87654 32109', batchName: 'Batch 5', dateOfBirth: '1997-08-22', address: '15, Park Street, Mumbai, Maharashtra 400001', branch: 'Online', course: 'Python Core', dateOfJoining: '2025-02-05', currentStatus: 'active', bgvStatus: 'submitted', placed: false, placedCompany: null, trackedStatus: null, trackedAt: null, createdAt: '2025-02-05', updatedAt: '2025-02-05' },
   { candidateId: 'c3', fullName: 'Amit Kumar', email: 'amit.kumar@email.com', phone: '+91 76543 21098', batchName: 'Batch 3', dateOfBirth: '1993-11-05', address: '78, Salt Lake, Kolkata, West Bengal 700091', branch: 'Chennai', course: 'Python Core', dateOfJoining: '2024-12-01', currentStatus: 'active', bgvStatus: 'cleared', placed: true, placedCompany: 'Google India', trackedStatus: null, trackedAt: null, createdAt: '2024-12-01', updatedAt: '2025-01-15' },
   { candidateId: 'c4', fullName: 'Sneha Reddy', email: 'sneha.reddy@email.com', phone: '+91 65432 10987', batchName: 'Batch 6', dateOfBirth: '1996-06-18', address: '33, Jubilee Hills, Hyderabad, Telangana 500033', branch: 'Bangalore', course: 'Full Stack', dateOfJoining: '2025-03-01', currentStatus: 'active', bgvStatus: 'pending', placed: false, placedCompany: null, trackedStatus: 'form-pending', trackedAt: '2025-03-01', createdAt: '2025-03-01', updatedAt: '2025-03-01' }
 ]);
@@ -133,7 +133,7 @@ addSheet('Registration_Responses', [
 
 // 11. BGV_Responses
 addSheet('BGV_Responses', [
-  { responseId: 'bgv_20260522_001', candidateId: 'c1', fullName: 'Rahul Sharma', email: 'rahul.sharma@email.com', phone: '+91 98765 43210', aadhar: '1234 5678 9012', currentAddress: '42, MG Road, Bangalore, Karnataka 560001', emergencyContact: 'Anita Sharma +91 90000 33333', offerLetter: true, appraisals: true, payslips: true, relievingLetter: true, counterOffer: false, submittedAt: '2025-01-20T10:00:00Z', reviewStatus: 'in-review' }
+  { responseId: 'bgv_20260522_001', candidateId: 'c1', fullName: 'Rahul Sharma', email: 'rahul.sharma@email.com', phone: '+91 98765 43210', aadhar: '1234 5678 9012', currentAddress: '42, MG Road, Bangalore, Karnataka 560001', emergencyContact: 'Anita Sharma +91 90000 33333', offerLetter: true, appraisals: true, payslips: true, relievingLetter: true, counterOffer: false, submittedAt: '2025-01-20T10:00:00Z', reviewStatus: 'submitted' }
 ]);
 
 // 12. BGV_Response_Companies

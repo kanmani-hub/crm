@@ -33,21 +33,25 @@ export default function CandidateProfile() {
   const {
     getCandidateById,
     updateCandidate,
-    updateFinancialPipeline,
     addPaymentRecord,
-    addAuditLog,
     showToast,
     settings,
     globalEditMode,
     toggleGlobalEdit,
     setActiveProfileId,
+    loadPaymentsForCandidate,
+    loadAuditLogs,
   } = useStore();
   const candidate = id ? getCandidateById(id) : undefined;
 
   useEffect(() => {
-    if (id) setActiveProfileId(id);
+    if (id) {
+      setActiveProfileId(id);
+      // Load real payment data from Google Sheets to populate Paid to Date
+      loadPaymentsForCandidate(id);
+    }
     return () => setActiveProfileId(null);
-  }, [id, setActiveProfileId]);
+  }, [id, setActiveProfileId, loadPaymentsForCandidate]);
 
   const [activePipeline, setActivePipeline] = useState<PipelineType>('registration');
   const [newCompany, setNewCompany] = useState('');
@@ -56,9 +60,15 @@ export default function CandidateProfile() {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentType, setPaymentType] = useState<PipelineType>('registration');
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [paymentRef, setPaymentRef] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [paymentError, setPaymentError] = useState('');
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
+
+  useEffect(() => {
+    setPaymentType(activePipeline);
+  }, [activePipeline]);
 
   if (!candidate) {
     return (
@@ -77,6 +87,7 @@ export default function CandidateProfile() {
   const handleUpdateField = (field: string, value: string) => {
     updateCandidate(candidate.id, { [field]: value });
     showToast('Saved to database');
+    setTimeout(() => loadAuditLogs(), 2000);
   };
 
   const handleUpdateBgv = (value: string) => {
@@ -94,6 +105,7 @@ export default function CandidateProfile() {
     updateCandidate(candidate.id, { bgvStatus: pendingBgvValue });
     showToast('BGV status updated');
     setBgvConfirmOpen(false);
+    setTimeout(() => loadAuditLogs(), 2000);
   };
 
   const handleTogglePlaced = (value: string) => {
@@ -104,6 +116,7 @@ export default function CandidateProfile() {
       updateCandidate(candidate.id, { placed: true });
     }
     showToast('Placement status updated');
+    setTimeout(() => loadAuditLogs(), 2000);
   };
 
   const handleAddCompany = () => {
@@ -136,16 +149,24 @@ export default function CandidateProfile() {
     showToast('Document updated');
   };
 
-  const formatCurrency = (amount: number) => `Rs. ${amount.toLocaleString('en-IN')}`;
-
-  const handleSavePayment = () => {
-    const amount = Number(paymentAmount);
+  const handleSavePayment = async () => {
+    setPaymentError('');
+    
+    if (!candidate.id || !candidate.fullName) {
+      setPaymentError('Candidate details missing (ID or Name). Cannot save.');
+      return;
+    }
     if (!paymentType) {
       setPaymentError('Select a payment type');
       return;
     }
+    const amount = Number(paymentAmount);
     if (!paymentAmount || isNaN(amount) || amount <= 0) {
-      setPaymentError('Enter a valid payment amount');
+      setPaymentError('Enter a valid payment amount > 0');
+      return;
+    }
+    if (!paymentDate) {
+      setPaymentError('Select a payment date');
       return;
     }
 
@@ -155,38 +176,78 @@ export default function CandidateProfile() {
       return;
     }
 
-    const timestamp = new Date().toISOString();
-    const typeLabel = paymentTypes.find((type) => type.type === paymentType)?.label || paymentType;
-    updateFinancialPipeline(candidate.id, paymentType, {
-      paidToDate: targetPipeline.paidToDate + amount,
-    });
-    addPaymentRecord({
-      id: `pay_${Date.now()}`,
-      candidateId: candidate.id,
-      pipelineType: paymentType,
-      amount,
-      transactionRef: paymentRef.trim() || undefined,
-      notes: paymentNotes.trim() || undefined,
-      timestamp,
-      userStamp: 'Python HR',
-    });
-    addAuditLog({
-      id: `log_${Date.now()}`,
-      candidateId: candidate.id,
-      logType: 'financial',
-      description: `Python HR logged a payment of ${formatCurrency(amount)} for ${typeLabel}.${paymentRef.trim() ? ` (Ref: ${paymentRef.trim()})` : ''}`,
-      reason: paymentNotes.trim() || undefined,
-      userStamp: 'Python HR',
-      timestamp,
-    });
+    setIsSavingPayment(true);
 
-    setActivePipeline(paymentType);
-    setPaymentAmount('');
-    setPaymentRef('');
-    setPaymentNotes('');
-    setPaymentError('');
-    setShowPaymentForm(false);
-    showToast(`Payment logged for ${typeLabel}`);
+    try {
+      // Map pipelineType key → human-readable paymentType label for Payment_Records sheet
+      const paymentTypeLabels: Record<string, string> = {
+        registration: 'Registration',
+        course: 'Course Fee',
+        document: 'Document Fee',
+        placement: 'Placement Fee',
+      };
+      const paymentTypeLabel = paymentTypeLabels[paymentType] || paymentType;
+
+      const timestamp = new Date().toISOString();
+      const typeLabel = paymentTypes.find((type) => type.type === paymentType)?.label || paymentTypeLabel;
+
+      console.log('--- [STEP 1] CandidateProfile: Verifying Candidate Object ---');
+      console.log('candidateId:', candidate.id);
+      console.log('fullName:', candidate.fullName);
+      console.log('email:', candidate.email);
+      console.log('--------------------------------------------------------------');
+
+      console.log('--- [STEP 2] CandidateProfile: Payload to be sent ---');
+      console.log({
+        action: 'addPayment',
+        candidateId: candidate.id,
+        candidateName: candidate.fullName,
+        paymentType: paymentTypeLabel,
+        pipelineType: paymentType,
+        amount,
+        paymentDate,
+        transactionRef: paymentRef.trim() || undefined,
+        notes: paymentNotes.trim() || undefined
+      });
+      console.log('-----------------------------------------------------');
+
+      // Now addPaymentRecord will return a success/error object
+      const result = await addPaymentRecord({
+        id: `pay_${Date.now()}`,
+        candidateId: candidate.id,
+        candidateName: candidate.fullName,
+        paymentType: paymentTypeLabel,
+        pipelineType: paymentType,
+        amount,
+        transactionRef: paymentRef.trim() || undefined,
+        notes: paymentNotes.trim() || undefined,
+        remarks: paymentNotes.trim() || undefined,
+        timestamp,
+        createdAt: timestamp,
+        paymentDate,
+        userStamp: 'Python HR',
+      });
+
+      if (result && result.success === false) {
+        setPaymentError(result.error || 'Failed to save payment');
+        return;
+      }
+
+      setActivePipeline(paymentType);
+      setPaymentAmount('');
+      setPaymentRef('');
+      setPaymentNotes('');
+      setPaymentError('');
+      setPaymentDate(new Date().toISOString().split('T')[0]);
+      setShowPaymentForm(false);
+      showToast(`Payment logged for ${typeLabel}`);
+
+      // We no longer rely on a timeout; useStore's addPaymentRecord triggers real reload.
+    } catch (err: any) {
+      setPaymentError(err.message || 'An error occurred while saving the payment.');
+    } finally {
+      setIsSavingPayment(false);
+    }
   };
 
   const activePipelineData = candidate.financials.find((f) => f.pipelineType === activePipeline);
@@ -194,7 +255,6 @@ export default function CandidateProfile() {
 
   const profileFields = [
     { label: 'Full Name', field: 'fullName', type: 'text' as const },
-    { label: 'Email Address', field: 'email', type: 'text' as const },
     { label: 'Phone Number', field: 'phone', type: 'text' as const },
     { label: 'Date of Birth', field: 'dateOfBirth', type: 'date' as const },
     { label: 'Branch', field: 'branch', type: 'select' as const, options: settings.branches },
@@ -261,14 +321,14 @@ export default function CandidateProfile() {
               <span className="font-mono text-[11px] font-medium text-cc-text-mid">BGV:</span>
               <span className={`font-mono text-[13px] font-semibold px-3 py-1 rounded-sm ${
                 candidate.bgvStatus === 'pending' ? 'bg-[rgba(201,168,76,0.1)] text-[#C9A84C]' :
-                candidate.bgvStatus === 'in-review' ? 'bg-[rgba(91,143,191,0.1)] text-[#5B8FBF]' :
+                candidate.bgvStatus === 'submitted' ? 'bg-[rgba(91,143,191,0.1)] text-[#5B8FBF]' :
                 'bg-[rgba(91,168,124,0.1)] text-[#5BA87C]'
               }`}>
                 <InlinePencilEditor
-                  value={candidate.bgvStatus === 'pending' ? 'PENDING' : candidate.bgvStatus === 'in-review' ? 'IN REVIEW' : 'CLEARED'}
+                  value={candidate.bgvStatus === 'pending' ? 'PENDING' : candidate.bgvStatus === 'submitted' ? 'SUBMITTED' : 'CLEARED'}
                   onSave={(v) => handleUpdateBgv(v.toLowerCase().replace(' ', '-'))}
                   type="select"
-                  options={['PENDING', 'IN REVIEW', 'CLEARED']}
+                  options={['PENDING', 'SUBMITTED', 'CLEARED']}
                 />
               </span>
             </div>
@@ -342,16 +402,6 @@ export default function CandidateProfile() {
                     />
                   </div>
                 ))}
-                {/* Address */}
-                <div className="flex items-start gap-2">
-                  <span className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-cc-text-mid w-[140px] flex-shrink-0 pt-0.5">
-                    Address
-                  </span>
-                  <InlinePencilEditor
-                    value={candidate.address || '--'}
-                    onSave={(v) => handleUpdateField('address', v)}
-                  />
-                </div>
               </div>
 
               {/* Past Employment */}
@@ -396,7 +446,57 @@ export default function CandidateProfile() {
                 onToggleApplied={handleToggleDocApplied}
               />
             </motion.div>
+
+            {/* BGV Details Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 }}
+            >
+              <div className="bg-cc-base-surface border border-cc-gridline rounded p-6 shadow-inset-glow">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="section-header">BACKGROUND VERIFICATION</h2>
+                  <span className={`font-mono text-[10px] font-semibold uppercase tracking-[0.07em] px-2.5 py-1 rounded-sm ${
+                    candidate.bgvStatus === 'pending'
+                      ? 'bg-[rgba(201,168,76,0.12)] text-[#C9A84C]'
+                      : candidate.bgvStatus === 'submitted'
+                        ? 'bg-[rgba(91,143,191,0.12)] text-[#5B8FBF]'
+                        : 'bg-[rgba(91,168,124,0.12)] text-[#5BA87C]'
+                  }`}>
+                    {candidate.bgvStatus === 'pending' ? 'PENDING' : candidate.bgvStatus === 'submitted' ? 'SUBMITTED' : 'CLEARED'}
+                  </span>
+                </div>
+
+                {(candidate.bgvStatus === 'submitted' || candidate.bgvStatus === 'cleared') && (candidate.bgvFatherName || candidate.bgvDob || candidate.bgvSubmittedAt) ? (
+                  <div className="space-y-2.5">
+                    {[
+                      { label: 'Submitted At', value: candidate.bgvSubmittedAt },
+                      { label: 'Date of Birth', value: candidate.bgvDob },
+                      { label: 'Father Name', value: candidate.bgvFatherName },
+                      { label: 'Address', value: candidate.bgvAddress },
+                      { label: 'Course', value: candidate.bgvCourseName },
+                      { label: 'Batch', value: candidate.bgvBatch },
+                      { label: 'Document Amount', value: candidate.bgvDocumentAmount ? `₹${candidate.bgvDocumentAmount}` : undefined },
+                    ].map(({ label, value }) => value ? (
+                      <div key={label} className="flex items-start gap-2">
+                        <span className="font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-cc-text-mid w-[140px] flex-shrink-0 pt-0.5">
+                          {label}
+                        </span>
+                        <span className="font-sans text-[13px] text-cc-text-high break-words">{value}</span>
+                      </div>
+                    ) : null)}
+                  </div>
+                ) : (
+                  <p className="font-sans text-[13px] text-cc-text-low">
+                    {candidate.bgvStatus === 'pending'
+                      ? 'No BGV form submitted yet. Send the BGV form link from the Dashboard to the candidate.'
+                      : 'BGV data will appear here after the form is submitted and synced.'}
+                  </p>
+                )}
+              </div>
+            </motion.div>
           </motion.div>
+
 
           {/* Right Column - Financial Management */}
           <motion.div
@@ -414,6 +514,7 @@ export default function CandidateProfile() {
                     setPaymentType(activePipeline);
                     setShowPaymentForm((open) => !open);
                     setPaymentError('');
+                    setPaymentDate(new Date().toISOString().split('T')[0]);
                   }}
                   className="inline-flex items-center gap-1.5 rounded bg-cc-base-elevated border border-cc-gridline px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-cc-warm-text hover:border-cc-warm-primary transition-colors"
                 >
@@ -458,15 +559,28 @@ export default function CandidateProfile() {
                         </div>
                       </div>
 
-                      <div className="mt-2">
-                        <label className="micro-text text-cc-text-mid block mb-1">Transaction / Ref ID</label>
-                        <input
-                          type="text"
-                          value={paymentRef}
-                          onChange={(e) => setPaymentRef(e.target.value)}
-                          placeholder="TXN12345"
-                          className="w-full h-9 bg-cc-base-elevated border border-cc-gridline rounded px-2 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-low focus:border-cc-warm-primary focus:outline-none"
-                        />
+                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="micro-text text-cc-text-mid block mb-1">Payment Date</label>
+                          <input
+                            type="date"
+                            value={paymentDate}
+                            onChange={(e) => setPaymentDate(e.target.value)}
+                            disabled={isSavingPayment}
+                            className="w-full h-9 bg-cc-base-elevated border border-cc-gridline rounded px-2 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-low focus:border-cc-warm-primary focus:outline-none [color-scheme:dark]"
+                          />
+                        </div>
+                        <div>
+                          <label className="micro-text text-cc-text-mid block mb-1">Transaction / Ref ID</label>
+                          <input
+                            type="text"
+                            value={paymentRef}
+                            onChange={(e) => setPaymentRef(e.target.value)}
+                            disabled={isSavingPayment}
+                            placeholder="TXN12345"
+                            className="w-full h-9 bg-cc-base-elevated border border-cc-gridline rounded px-2 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-low focus:border-cc-warm-primary focus:outline-none"
+                          />
+                        </div>
                       </div>
 
                       <div className="mt-2">
@@ -474,6 +588,7 @@ export default function CandidateProfile() {
                         <textarea
                           value={paymentNotes}
                           onChange={(e) => setPaymentNotes(e.target.value)}
+                          disabled={isSavingPayment}
                           placeholder="Paid via GPay - Batch 4"
                           rows={2}
                           className="w-full bg-cc-base-elevated border border-cc-gridline rounded px-2 py-1.5 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-low focus:border-cc-warm-primary focus:outline-none resize-none"
@@ -486,14 +601,21 @@ export default function CandidateProfile() {
                         <button
                           type="button"
                           onClick={handleSavePayment}
-                          className="flex-1 h-9 bg-cc-green text-white font-mono text-[10px] font-semibold uppercase tracking-[0.06em] rounded hover:brightness-110 transition-all"
+                          disabled={isSavingPayment}
+                          className="flex-1 h-9 bg-cc-green text-white font-mono text-[10px] font-semibold uppercase tracking-[0.06em] rounded hover:brightness-110 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
                         >
-                          Save Payment
+                          {isSavingPayment ? (
+                            <>
+                              <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              SAVING...
+                            </>
+                          ) : 'Save Payment'}
                         </button>
                         <button
                           type="button"
-                          onClick={() => { setShowPaymentForm(false); setPaymentError(''); }}
-                          className="h-9 px-3 border border-cc-gridline rounded font-mono text-[10px] uppercase tracking-[0.06em] text-cc-text-mid hover:text-cc-warm-text transition-colors"
+                          onClick={() => { setShowPaymentForm(false); setPaymentError(''); setPaymentDate(new Date().toISOString().split('T')[0]); }}
+                          disabled={isSavingPayment}
+                          className="h-9 px-3 border border-cc-gridline rounded font-mono text-[10px] uppercase tracking-[0.06em] text-cc-text-mid hover:text-cc-warm-text disabled:opacity-50 transition-colors"
                         >
                           Cancel
                         </button>

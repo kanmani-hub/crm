@@ -1,4 +1,4 @@
-import type { AppSettings } from '../types';
+import type { DashboardMetrics } from '@/types';
 
 /**
  * Google Apps Script API URL — loaded from store settings at runtime,
@@ -10,8 +10,20 @@ const FALLBACK_GAS_URL = 'https://script.google.com/macros/s/AKfycbxIVbtFPBF0p2t
 const LOCAL_API_BASE = 'http://localhost:3001/api';
 
 function getGasUrl(): string {
-  // Try to get from localStorage (set by Settings page)
+  // Check offline mode setting
   if (typeof window !== 'undefined') {
+    try {
+      const storedSettings = window.localStorage.getItem('pycrm-settings');
+      if (storedSettings) {
+        const settings = JSON.parse(storedSettings);
+        if (settings.isOfflineMode) {
+          return `${LOCAL_API_BASE}/mock-gas`; // Or whatever mock endpoint exists, or just block GAS completely
+        }
+      }
+    } catch (e) {
+      // ignore parse errors
+    }
+
     const stored = window.localStorage.getItem('pycrm-gas-url');
     if (stored) return stored;
   }
@@ -45,26 +57,13 @@ export interface SyncResult {
 export interface GASDataResponse {
   success: boolean;
   candidates: Array<Record<string, string>>;
+  financials?: Array<Record<string, string>>;
+  payments?: Array<Record<string, string>>;
   sync: SyncResult;
   timestamp: string;
   error?: string;
 }
 
-export interface DashboardMetrics {
-  success: boolean;
-  totalCandidates: number;
-  placedCount: number;
-  activeCount: number;
-  inTraining: number;
-  pendingBGV: number;
-  clearedBGV: number;
-  branchCounts: Record<string, number>;
-  courseCounts: Record<string, number>;
-  placementRate: number;
-  revenue?: number;
-  pendingDues?: number;
-  timestamp: string;
-}
 
 export const sheetsApi = {
   /**
@@ -89,18 +88,44 @@ export const sheetsApi = {
     }
 
     // Fallback: try local Express server
-    try {
-      const response = await fetchWithTimeout(`${LOCAL_API_BASE}/data`, {}, 5000);
-      if (!response.ok) throw new Error('Local server error');
-      const data = await response.json();
-      // Transform local server response format into GAS format
-      const candidates = data.Master_Candidates || [];
+    // Helper to transform local server response into GAS format
+    const transformLocalResponse = (data: Record<string, any[]>): GASDataResponse => {
+      const candidates = data.Master_Candidates || data['Master_Candidates'] || [];
+      const financials = data.Financial_Ledger || data['Financial_Ledger'] || [];
+      const payments = data.Payment_Records || data['Payment_Records'] || [];
+      console.log('[sheetsApi] Local server returned:', candidates.length, 'candidates,', financials.length, 'financials,', payments.length, 'payments');
       return {
         success: true,
-        candidates: candidates,
+        candidates,
+        financials,
+        payments,
         sync: { success: true, synced: 0, skipped: 0, total: 0 },
         timestamp: new Date().toISOString()
       };
+    };
+
+    // Try 1: Relative URL (goes through Vite dev proxy → Express)
+    try {
+      const response = await fetchWithTimeout('/api/data', {}, 5000);
+      if (!response.ok) throw new Error(`Proxy returned ${response.status}`);
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('json')) throw new Error('Non-JSON response from proxy');
+      const data = await response.json();
+      console.log('[sheetsApi] Fetched via Vite proxy (relative URL)');
+      return transformLocalResponse(data);
+    } catch (proxyError) {
+      console.warn('[sheetsApi] Vite proxy fetch failed:', proxyError);
+    }
+
+    // Try 2: Absolute URL direct to Express server
+    try {
+      const response = await fetchWithTimeout(`${LOCAL_API_BASE}/data`, {}, 5000);
+      if (!response.ok) throw new Error('Local server error');
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('json')) throw new Error('Non-JSON response from local server');
+      const data = await response.json();
+      console.log('[sheetsApi] Fetched via direct local server URL');
+      return transformLocalResponse(data);
     } catch (localError) {
       console.warn('[sheetsApi] Local server also failed:', localError);
       throw new Error('Both GAS and local server are unreachable');
@@ -290,6 +315,37 @@ export const sheetsApi = {
   },
 
   /**
+   * Update financial pipeline (adjustments, baseFee)
+   */
+  updateFinancialPipeline: async (candidateId: string, pipelineType: string, baseFee: number, adjustments: any[]) => {
+    const gasUrl = getGasUrl();
+    const totalAdjustments = adjustments.reduce((sum, a) => sum + a.amount, 0);
+    try {
+      const response = await fetchWithTimeout(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          action: 'updateFinancialPipeline',
+          candidateId: candidateId,
+          pipelineType: pipelineType,
+          baseFee: String(baseFee),
+          adjustmentsJson: JSON.stringify(adjustments),
+          totalAdjustments: String(totalAdjustments)
+        }),
+      }, 15000);
+      
+      if (!response.ok) throw new Error(`GAS updateFinancialPipeline failed: ${response.status}`);
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Failed to update financial pipeline in GAS');
+      return data;
+    } catch (error) {
+      console.warn('[sheetsApi] GAS updateFinancialPipeline failed:', error);
+      // Optional fallback to local logic if needed
+      throw error;
+    }
+  },
+
+  /**
    * Import a candidate manually.
    */
   importCandidate: async (data: {
@@ -350,17 +406,249 @@ export const sheetsApi = {
   },
 
   /**
+   * Save a payment to the Payment_Records Google Sheet AND update Financial_Ledger.
+   * Called via the addPayment GAS action.
+   */
+  addPayment: async (data: {
+    candidateId: string;
+    candidateName: string;
+    paymentType: string;
+    pipelineType?: string;
+    amount: number;
+    paymentDate?: string;
+    remarks?: string;
+    transactionRef?: string;
+    notes?: string;
+    userStamp?: string;
+    timestamp?: string;
+  }) => {
+    // PRE-FLIGHT VALIDATION
+    if (!data.candidateId || !data.candidateName || !data.paymentType || !data.amount || !data.paymentDate) {
+      throw new Error('sheetsApi.addPayment: Missing required fields');
+    }
+
+    const gasUrl = getGasUrl();
+    try {
+      const urlParams = new URLSearchParams({
+        action: 'addPayment',
+        candidateId:    data.candidateId,
+        candidateName:  data.candidateName,
+        paymentType:    data.paymentType,
+        pipelineType:   data.pipelineType || data.paymentType,
+        pipelineLabel:  data.paymentType, // Send human label to GAS explicitly
+        amount:         String(data.amount),
+        paymentDate:    data.paymentDate,
+        remarks:        data.remarks || '',
+        transactionRef: data.transactionRef || '',
+        notes:          data.notes || data.remarks || '',
+        userStamp:      data.userStamp || 'Python HR',
+        timestamp:      data.timestamp || new Date().toISOString(),
+      });
+
+      console.log('--- [STEP 3b] sheetsApi: Payload passed to Google Apps Script ---');
+      console.log(Object.fromEntries(urlParams.entries()));
+      console.log('---------------------------------------------------------------');
+
+      const response = await fetchWithTimeout(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: urlParams,
+      }, 20000);
+
+      if (!response.ok) throw new Error(`GAS addPayment failed: ${response.status}`);
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || 'Failed to save payment to GAS');
+      console.log('[sheetsApi] Payment saved to GAS:', result.paymentId);
+      return result;
+      } catch (error) {
+      console.warn('[sheetsApi] GAS addPayment failed, trying local server:', error);
+      // Fallback to local Express server
+      try {
+        const localResponse = await fetchWithTimeout(`${LOCAL_API_BASE}/append`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sheetName: 'Payment_Records',
+            values: {
+              paymentId: `pay_${Date.now()}`,
+              ...data,
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        }, 10000);
+        if (localResponse.ok) {
+          console.warn('⚠️ Payment saved to local fallback. Financial_Ledger was NOT updated locally.');
+          return await localResponse.json();
+        }
+      } catch {
+        // silently fail fallback
+      }
+      throw error;
+    }
+  },
+
+  /**
+   * Fetch all payments for a specific candidate from Payment_Records sheet.
+   */
+  getPaymentsForCandidate: async (candidateId: string) => {
+    const gasUrl = getGasUrl();
+    try {
+      const url = `${gasUrl}?action=getPayments&candidateId=${encodeURIComponent(candidateId)}&t=${Date.now()}`;
+      const response = await fetchWithTimeout(url, {}, 15000);
+      if (!response.ok) throw new Error(`GAS getPayments failed: ${response.status}`);
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Failed to load payments');
+      console.log('[sheetsApi] Loaded', data.payments?.length, 'payments for', candidateId);
+      return data.payments as Array<Record<string, string>>;
+    } catch (error) {
+      console.warn('[sheetsApi] getPaymentsForCandidate failed:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Fetch Financial_Ledger rows for a specific candidate.
+   * Returns per-pipeline breakdown: baseFee, paidToDate, netPayable, pendingDues.
+   */
+  getFinancialsForCandidate: async (candidateId: string) => {
+    const gasUrl = getGasUrl();
+    try {
+      const url = `${gasUrl}?action=getFinancials&candidateId=${encodeURIComponent(candidateId)}&t=${Date.now()}`;
+      const response = await fetchWithTimeout(url, {}, 15000);
+      if (!response.ok) throw new Error(`GAS getFinancials failed: ${response.status}`);
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Failed to load financials');
+      console.log('[sheetsApi] Loaded', data.financials?.length, 'ledger rows for', candidateId);
+      return data.financials as Array<Record<string, string>>;
+    } catch (error) {
+      console.warn('[sheetsApi] getFinancialsForCandidate failed:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Fetch audit logs for a specific candidate.
+   */
+  getAuditLogsForCandidate: async (candidateId: string) => {
+    const gasUrl = getGasUrl();
+    try {
+      const url = `${gasUrl}?action=getAuditLogs&candidateId=${encodeURIComponent(candidateId)}&t=${Date.now()}`;
+      const response = await fetchWithTimeout(url, {}, 15000);
+      if (!response.ok) throw new Error(`GAS getAuditLogs failed: ${response.status}`);
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Failed to load audit logs');
+      console.log('[sheetsApi] Loaded', data.logs?.length, 'audit logs for', candidateId);
+      return data.logs as Array<Record<string, string>>;
+    } catch (error) {
+      console.warn('[sheetsApi] getAuditLogsForCandidate failed:', error);
+      return [];
+    }
+  },
+
+  /**
    * Send an audit log entry.
    */
-  appendAuditLog: async (log: { id: string; candidateId: string; logType: string; description: string; reason?: string; userStamp: string; timestamp: string }) => {
-    return sheetsApi.appendRow('Tab3_System_Audit_Logs', {
-      logId: log.id,
-      candidateId: log.candidateId,
-      logType: log.logType,
-      description: log.description,
-      reason: log.reason || '',
-      userStamp: log.userStamp,
-      timestamp: log.timestamp
-    });
+  addAuditLog: async (log: { candidateId: string; candidateName?: string; actionType: string; oldValue?: string; newValue?: string; userStamp: string; timestamp?: string }) => {
+    const gasUrl = getGasUrl();
+    try {
+      const urlParams = new URLSearchParams({
+        action: 'addAuditLog',
+        candidateId: log.candidateId,
+        candidateName: log.candidateName || '',
+        actionType: log.actionType,
+        oldValue: log.oldValue || '',
+        newValue: log.newValue || '',
+        userStamp: log.userStamp,
+        timestamp: log.timestamp || new Date().toISOString(),
+      });
+
+      const response = await fetchWithTimeout(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: urlParams,
+      }, 15000);
+
+      if (!response.ok) throw new Error(`GAS addAuditLog failed: ${response.status}`);
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || 'Failed to save audit log');
+      return result;
+    } catch (error) {
+      console.warn('[sheetsApi] addAuditLog failed:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Send contact mail and log to Contact_Mail sheet + Audit Log.
+   */
+  sendContactMail: async (mail: { recipient: string; subject: string; message: string; userStamp: string }) => {
+    const gasUrl = getGasUrl();
+    try {
+      const urlParams = new URLSearchParams({
+        action: 'sendContactMail',
+        recipient: mail.recipient,
+        subject: mail.subject,
+        message: mail.message,
+        userStamp: mail.userStamp,
+      });
+
+      const response = await fetchWithTimeout(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: urlParams,
+      }, 15000);
+
+      if (!response.ok) throw new Error(`GAS sendContactMail failed: ${response.status}`);
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || 'Failed to send contact mail');
+      return result;
+    } catch (error) {
+      console.warn('[sheetsApi] sendContactMail failed:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Export all data for backup
+   */
+  exportAllData: async () => {
+    const gasUrl = getGasUrl();
+    try {
+      const url = `${gasUrl}?action=exportAllData&t=${Date.now()}`;
+      const response = await fetchWithTimeout(url, {}, 30000);
+      if (!response.ok) throw new Error(`GAS exportAllData failed: ${response.status}`);
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || 'Failed to export data');
+      return result.data;
+    } catch (error) {
+      console.warn('[sheetsApi] exportAllData failed:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Rebuild the Financial Ledger from scratch based on Payment_Records.
+   */
+  rebuildFinancialLedger: async () => {
+    const gasUrl = getGasUrl();
+    try {
+      const urlParams = new URLSearchParams({
+        action: 'rebuildFinancialLedger'
+      });
+
+      const response = await fetchWithTimeout(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: urlParams,
+      }, 30000);
+
+      if (!response.ok) throw new Error(`GAS rebuildFinancialLedger failed: ${response.status}`);
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || 'Failed to rebuild ledger');
+      return result;
+    } catch (error) {
+      console.warn('[sheetsApi] rebuildFinancialLedger failed:', error);
+      throw error;
+    }
   }
 };

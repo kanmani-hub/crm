@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, FileText, Shield, Send, ClipboardList, Clock, Pencil, Check, X, Plus, Download, Database, RefreshCw, CloudDownload } from 'lucide-react';
+import { Mail, FileText, Shield, Send, Pencil, Check, X, Plus, Download, Database, RefreshCw, Users, UserPlus, IndianRupee, FileCheck, Calendar, Activity, CheckCircle, Clock as ClockIcon } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import type { PayloadType, TrackedStatus } from '@/types';
 import TopNavigationBar from '@/components/TopNavigationBar';
 import CandidateSearchPanel from '@/components/CandidateSearchPanel';
 import Toast from '@/components/Toast';
 import ModalWindow from '@/components/ModalWindow';
-import StatusBadge from '@/components/StatusBadge';
-import { exportCandidatesToExcel, exportFinancialLedgerToExcel, exportAuditLogsToExcel } from '@/lib/exportUtils';
+import { exportMultiSheetExcel, exportToExcel } from '@/lib/exportUtils';
 import { sheetsApi } from '@/services/sheetsApi';
 
 const toggles: { type: PayloadType; label: string; icon: typeof FileText; color: string }[] = [
@@ -21,8 +20,8 @@ export default function Dashboard() {
   const {
     candidates, auditLogs, trackedCandidates, settings,
     updateSettings, addTrackedCandidate, updateTrackedStatus, showToast,
-    fetchInitialData, syncCandidates, refreshDashboard,
-    syncStatus, lastSyncTimestamp, lastSyncResult, dataSource,
+    fetchInitialData, refreshDashboard, loadAuditLogs,
+    syncStatus, lastSyncTimestamp, dataSource, isFetchingData, user, getCalculatedDashboardMetrics
   } = useStore();
   const [email, setEmail] = useState('');
   const [selectedToggle, setSelectedToggle] = useState<PayloadType>('new-registration');
@@ -33,27 +32,70 @@ export default function Dashboard() {
   const [editingValue, setEditingValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [emailError, setEmailError] = useState('');
+  const [contactSubject, setContactSubject] = useState('');
+  const [contactMessage, setContactMessage] = useState('');
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewCandidate, setReviewCandidate] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
-  // Poll for new candidates every 30 seconds
+  const handleExportBackup = async (type: 'candidates' | 'finances' | 'audit' | 'registration' | 'bgv' | 'full') => {
+    setIsExporting(true);
+    showToast(`Generating backup. Please wait...`, 'info');
+    try {
+      const data = await sheetsApi.exportAllData();
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const suffix = `${yyyy}_${mm}`;
+      
+      switch (type) {
+        case 'candidates':
+          exportToExcel(data.candidates, `Candidates_${suffix}.xlsx`, 'Candidates');
+          break;
+        case 'finances':
+          exportMultiSheetExcel({ Payment_Records: data.payments, Financial_Ledger: data.financials }, `Finances_${suffix}.xlsx`);
+          break;
+        case 'audit':
+          exportToExcel(data.auditLogs, `AuditLogs_${suffix}.xlsx`, 'Audit_Logs');
+          break;
+        case 'bgv':
+          exportToExcel(data.bgv, `BGV_Responses_${suffix}.xlsx`, 'BGV_Responses');
+          break;
+        case 'full':
+          exportMultiSheetExcel({
+            Master_Candidates: data.candidates,
+            Registration_Responses: data.registrations,
+            Payment_Records: data.payments,
+            Financial_Ledger: data.financials,
+            System_Audit_Logs: data.auditLogs,
+            BGV_Responses: data.bgv
+          }, `FullCRMBackup_${suffix}.xlsx`);
+          break;
+      }
+      showToast('Backup downloaded successfully!');
+    } catch (err) {
+      showToast('Failed to generate backup.', 'error');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Load candidates on mount + poll every 30 seconds
   useEffect(() => {
+    // Always load candidates fresh on dashboard mount
+    fetchInitialData();
     refreshDashboard();
+
     const interval = setInterval(async () => {
       try {
-        const result = await syncCandidates();
-        if (result && result.synced > 0) {
-          showToast(`New candidate added! Synced ${result.synced} new entries.`, 'success');
-        }
+        await fetchInitialData();
       } catch (err) {
         console.error('Auto-refresh failed', err);
       }
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [syncCandidates, refreshDashboard, showToast]);
+  }, [fetchInitialData, refreshDashboard]);
 
   const validateEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
   const isContactMail = selectedToggle === 'contact-mail';
@@ -160,24 +202,62 @@ export default function Dashboard() {
   };
 
   const handleSend = async () => {
-    if (!email.trim()) {
-      setEmailError('Please enter an email address');
-      return;
+    if (!isContactMail) {
+      if (!email.trim()) {
+        setEmailError('Please enter an email address');
+        return;
+      }
+      if (!validateEmail(email)) {
+        setEmailError('Please enter a valid email');
+        return;
+      }
     }
-    if (!validateEmail(email)) {
-      setEmailError('Please enter a valid email');
-      return;
+    
+    if (isContactMail) {
+      if (selectedContacts.length === 0) {
+        setContactError('Select at least one contact to send mail to');
+        return;
+      }
+      if (!contactSubject.trim() || !contactMessage.trim()) {
+        setContactError('Subject and message are required for contact mail');
+        return;
+      }
     }
-    if (isContactMail && selectedContacts.length === 0) {
-      setContactError('Select at least one contact to share');
-      return;
-    }
+
     setEmailError('');
     setContactError('');
     setIsSending(true);
 
     try {
-      if (selectedToggle === 'new-registration') {
+      if (isContactMail) {
+        // Send actual mail through backend for each contact
+        for (const recipient of selectedContacts) {
+          await sheetsApi.sendContactMail({
+            recipient,
+            subject: contactSubject,
+            message: contactMessage,
+            userStamp: user?.name || 'Python HR'
+          });
+        }
+        
+        showToast(`${selectedContacts.length} Contact mail(s) successfully sent`);
+        
+        addTrackedCandidate({
+          candidateId: `tc_${Date.now()}`,
+          status: 'contacts-sent',
+          payloadType: 'contact-mail',
+          email: selectedContacts.join(', '),
+          contactCount: selectedContacts.length,
+          timestamp: new Date().toISOString(),
+        });
+        
+        // Refresh audit logs to show the new mail
+        loadAuditLogs();
+
+        setSelectedContacts([]);
+        setContactSubject('');
+        setContactMessage('');
+      } else if (selectedToggle === 'new-registration') {
         const formLink = settings.googleSheetLinks.registrationForm || 'https://forms.gle/LfD5SxxYXDqFGMwn6';
 
         submitToGoogleWindow(
@@ -187,6 +267,15 @@ export default function Dashboard() {
           formLink
         );
         showToast('Registration link dispatched invisibly in the background.');
+        
+        addTrackedCandidate({
+          candidateId: `tc_${Date.now()}`,
+          status: 'form-pending',
+          payloadType: 'new-registration',
+          email: email.trim(),
+          timestamp: new Date().toISOString(),
+        });
+        setEmail('');
       } else if (selectedToggle === 'bgv-form') {
         const formLink = settings.googleSheetLinks.bgvForm || 'https://forms.gle/LfD5SxxYXDqFGMwn6'; 
 
@@ -197,28 +286,15 @@ export default function Dashboard() {
           formLink
         );
         showToast('BGV link dispatched invisibly in the background.');
-      } else {
-        // Simulate async dispatch for other types
-        await new Promise((r) => setTimeout(r, 800));
-        showToast(
-          isContactMail
-            ? `${selectedContacts.length} Contacts successfully shared with ${email.trim()}`
-            : `${selectedToggle} link dispatched to ${email.trim()}`
-        );
-      }
-
-      addTrackedCandidate({
-        candidateId: `tc_${Date.now()}`,
-        status: (selectedToggle === 'bgv-form' ? 'bgv-submitted' : isContactMail ? 'contacts-sent' : 'form-pending') as TrackedStatus,
-        payloadType: selectedToggle,
-        email: email.trim(),
-        contactCount: isContactMail ? selectedContacts.length : undefined,
-        timestamp: new Date().toISOString(),
-      });
-
-      setEmail('');
-      if (isContactMail) {
-        setSelectedContacts([]);
+        
+        addTrackedCandidate({
+          candidateId: `tc_${Date.now()}`,
+          status: 'bgv-submitted',
+          payloadType: 'bgv-form',
+          email: email.trim(),
+          timestamp: new Date().toISOString(),
+        });
+        setEmail('');
       }
     } catch (err: any) {
       if (err.message === 'MISSING_GAS_URL') {
@@ -230,74 +306,6 @@ export default function Dashboard() {
       }
     } finally {
       setIsSending(false);
-    }
-  };
-
-  const handleReview = (candidateId: string) => {
-    setReviewCandidate(candidateId);
-    setReviewModalOpen(true);
-  };
-
-  const handleSendBGV = () => {
-    if (reviewCandidate) {
-      updateTrackedStatus(reviewCandidate, 'cleared');
-      showToast('BGV request dispatched');
-    }
-    setReviewModalOpen(false);
-    setReviewCandidate(null);
-  };
-
-  const getRelativeTime = (iso: string) => {
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'Just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
-  };
-
-  const handleSyncGoogleSheet = async () => {
-    // Use the registration Google Sheet URL from settings, or the form link
-    const sheetUrl = settings.googleSheetLinks?.registrations || '';
-    
-    if (!sheetUrl) {
-      showToast('Please configure the Google Sheet URL in Settings > Sheet Links > Registrations', 'error');
-      return;
-    }
-
-    setIsSyncing(true);
-    try {
-      const result = await sheetsApi.syncGoogleSheet(sheetUrl);
-      if (result.imported > 0) {
-        showToast(`Successfully synced ${result.imported} new candidate(s) from Google Sheets!`);
-        // Refresh data
-        await fetchInitialData();
-      } else {
-        showToast(`No new candidates to import (${result.total} total rows checked)`, 'info');
-      }
-    } catch (err: any) {
-      showToast(err.message || 'Failed to sync from Google Sheets', 'error');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const handleRefreshData = async () => {
-    setIsRefreshing(true);
-    try {
-      const result = await syncCandidates();
-      if (result && result.synced > 0) {
-        showToast(`Synced ${result.synced} new candidate${result.synced > 1 ? 's' : ''} from Google Form!`);
-      } else if (result) {
-        showToast('Data refreshed — no new entries found', 'info');
-      } else {
-        showToast('Data refreshed successfully');
-      }
-    } catch {
-      showToast('Failed to refresh data', 'error');
-    } finally {
-      setIsRefreshing(false);
     }
   };
 
@@ -332,7 +340,14 @@ export default function Dashboard() {
               CANCEL
             </button>
             <button
-              onClick={handleSendBGV}
+              onClick={() => {
+                if (reviewCandidate) {
+                  updateTrackedStatus(reviewCandidate, 'cleared');
+                  showToast('BGV request dispatched');
+                }
+                setReviewModalOpen(false);
+                setReviewCandidate(null);
+              }}
               className="px-5 py-2 font-mono text-[11px] font-semibold uppercase tracking-wider bg-cc-blue text-white rounded hover:brightness-110 transition-all"
             >
               SEND TO BGV TEAM
@@ -457,14 +472,73 @@ export default function Dashboard() {
           </motion.div>
         </div>
 
+        {/* 10 KPI CARDS */}
+        {(() => {
+           const metrics = getCalculatedDashboardMetrics();
+           return (
+             <motion.div
+               initial={{ opacity: 0, y: 10 }}
+               animate={{ opacity: 1, y: 0 }}
+               transition={{ duration: 0.4, delay: 0.1 }}
+               className="mb-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 max-w-[1360px] mx-auto"
+             >
+               {[
+                 { label: 'Total Candidates', value: metrics.totalCandidates, icon: Users, color: 'text-cc-blue' },
+                 { label: 'New Joinees', value: metrics.newJoinees, icon: UserPlus, color: 'text-cc-green' },
+                 { label: 'Placed Candidates', value: metrics.placedCount, icon: CheckCircle, color: 'text-cc-green' },
+                 { label: 'Revenue Received', value: `₹${(metrics.revenue || 0).toLocaleString()}`, icon: IndianRupee, color: 'text-cc-text-high' },
+                 { label: 'Pending Dues', value: `₹${(metrics.pendingDues || 0).toLocaleString()}`, icon: IndianRupee, color: 'text-cc-danger' },
+               ].map((kpi, idx) => {
+                 const Icon = kpi.icon;
+              return (
+                <div key={idx} className="bg-cc-base-elevated border border-cc-gridline rounded-md p-4 flex items-center gap-3 hover:border-cc-warm-primary transition-colors">
+                  <div className={`flex-shrink-0 w-8 h-8 flex items-center justify-center rounded bg-cc-base-surface border border-cc-gridline/50`}>
+                    <Icon size={16} className={kpi.color} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="micro-text text-cc-text-mid truncate leading-none uppercase">{kpi.label}</p>
+                    <p className="text-xl font-mono text-cc-text-high mt-1.5 leading-none">{kpi.value}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </motion.div>
+          );
+        })()}
+
         {/* Global Prominent Search Panel */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.15 }}
-          className="mb-8 w-full max-w-[1000px] mx-auto"
+          className="mb-4 w-full max-w-[1000px] mx-auto"
         >
           <CandidateSearchPanel />
+          {/* Candidate load status strip */}
+          <div className="mt-2 flex items-center gap-3 px-1">
+            {isFetchingData ? (
+              <span className="flex items-center gap-1.5 font-mono text-[10px] text-cc-warm-text">
+                <RefreshCw size={10} className="animate-spin" />
+                Loading candidates from Google Sheets...
+              </span>
+            ) : candidates.length === 0 ? (
+              <>
+                <span className="font-mono text-[10px] text-cc-danger">
+                  ⚠ No candidates loaded — check GAS URL in Settings
+                </span>
+                <button
+                  onClick={() => fetchInitialData()}
+                  className="font-mono text-[10px] text-cc-warm-text underline hover:no-underline"
+                >
+                  Retry
+                </button>
+              </>
+            ) : (
+              <span className="font-mono text-[10px] text-cc-text-low">
+                {candidates.length} candidate{candidates.length !== 1 ? 's' : ''} loaded
+              </span>
+            )}
+          </div>
         </motion.div>
 
         {/* Single-Column Dashboard Layout */}
@@ -483,20 +557,24 @@ export default function Dashboard() {
                   <span className="section-header">DISPATCH NEW WORKFLOW</span>
                 </div>
                 
-                {/* Email Input */}
-                <div className="relative mt-2">
-                  <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-cc-text-mid" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => { setEmail(e.target.value); setEmailError(''); }}
-                    placeholder="Enter candidate email address..."
-                    className={`w-full h-12 bg-cc-base-elevated border rounded pl-11 pr-4 font-sans text-[15px] text-cc-text-high placeholder:text-cc-text-mid focus:outline-none transition-colors ${emailError ? 'border-cc-danger' : 'border-cc-gridline focus:border-cc-warm-primary'}`}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSend(); }}
-                    disabled={isSending}
-                  />
-                </div>
-                {emailError && <p className="mt-1.5 micro-text text-cc-danger">{emailError}</p>}
+                {/* Email Input (hidden for Contact Mail) */}
+                {!isContactMail && (
+                  <>
+                    <div className="relative mt-2">
+                      <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-cc-text-mid" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => { setEmail(e.target.value); setEmailError(''); }}
+                        placeholder="Enter candidate email address..."
+                        className={`w-full h-12 bg-cc-base-elevated border rounded pl-11 pr-4 font-sans text-[15px] text-cc-text-high placeholder:text-cc-text-mid focus:outline-none transition-colors ${emailError ? 'border-cc-danger' : 'border-cc-gridline focus:border-cc-warm-primary'}`}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSend(); }}
+                        disabled={isSending}
+                      />
+                    </div>
+                    {emailError && <p className="mt-1.5 micro-text text-cc-danger">{emailError}</p>}
+                  </>
+                )}
 
                 <AnimatePresence initial={false}>
                   {isContactMail && (
@@ -624,6 +702,31 @@ export default function Dashboard() {
                             Add Contact
                           </button>
                         </div>
+                        
+                        <div className="mt-4 pt-4 border-t border-[rgba(91,168,124,0.18)]">
+                           <div className="space-y-3">
+                              <div>
+                                <input
+                                  type="text"
+                                  value={contactSubject}
+                                  onChange={(e) => { setContactSubject(e.target.value); setContactError(''); }}
+                                  placeholder="Subject..."
+                                  disabled={isSending}
+                                  className="w-full h-10 bg-cc-base-elevated border border-cc-gridline rounded px-3 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-mid focus:border-cc-warm-primary focus:outline-none transition-colors"
+                                />
+                              </div>
+                              <div>
+                                <textarea
+                                  value={contactMessage}
+                                  onChange={(e) => { setContactMessage(e.target.value); setContactError(''); }}
+                                  placeholder="Message..."
+                                  disabled={isSending}
+                                  className="w-full h-24 resize-none bg-cc-base-elevated border border-cc-gridline rounded p-3 font-sans text-[13px] text-cc-text-high placeholder:text-cc-text-mid focus:border-cc-warm-primary focus:outline-none transition-colors"
+                                />
+                              </div>
+                           </div>
+                        </div>
+
                         {contactError && <p className="mt-2 micro-text text-cc-danger">{contactError}</p>}
                       </div>
                     </motion.div>
@@ -666,7 +769,7 @@ export default function Dashboard() {
               </div>
             </motion.div>
 
-            {/* Data Export Center */}
+            {/* Backup Center */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -675,51 +778,119 @@ export default function Dashboard() {
               <div className="bg-cc-base-surface border border-cc-gridline rounded-lg p-6 shadow-2xl relative overflow-hidden backdrop-blur-md">
                 <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-cc-gridline/50">
                   <Database size={15} className="text-cc-warm-text" />
-                  <span className="section-header">DATA EXPORT CENTER</span>
+                  <span className="section-header">BACKUP CENTER</span>
                 </div>
 
-                <p className="font-sans text-[13px] text-cc-text-mid mb-4">
-                  Download standard candidate roster, financial pipelines ledger, and system security audit trail as Excel spreadsheets.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <button
-                    onClick={() => {
-                      exportCandidatesToExcel(candidates);
-                      showToast('Candidate roster Excel download started');
-                    }}
-                    className="flex items-center justify-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary transition-all cursor-pointer"
-                  >
-                    <Download size={13} />
-                    Export Candidates
-                  </button>
-                  <button
-                    onClick={() => {
-                      exportFinancialLedgerToExcel(candidates);
-                      showToast('Financial ledger Excel download started');
-                    }}
-                    className="flex items-center justify-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary transition-all cursor-pointer"
-                  >
-                    <Download size={13} />
-                    Export Finances
-                  </button>
-                  <button
-                    onClick={() => {
-                      const getCandidateName = (id: string) => {
-                        const c = candidates.find(cand => cand.id === id);
-                        return c ? c.fullName : 'System / Unknown';
-                      };
-                      exportAuditLogsToExcel(auditLogs, getCandidateName);
-                      showToast('Audit trail Excel download started');
-                    }}
-                    className="flex items-center justify-center gap-2 h-10 px-4 bg-cc-base-elevated border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider text-cc-text-high hover:border-cc-warm-primary hover:text-cc-warm-primary transition-all cursor-pointer"
-                  >
-                    <Download size={13} />
-                    Export Audit Logs
-                  </button>
+                <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Export Candidates */}
+                  <div className="bg-cc-base-elevated border border-cc-gridline rounded p-4">
+                    <h3 className="font-mono text-[13px] text-cc-text-high mb-2">Candidates</h3>
+                    <p className="font-sans text-[12px] text-cc-text-mid mb-4">Export all candidate profiles.</p>
+                    <button
+                      onClick={() => handleExportBackup('candidates')}
+                      disabled={isExporting}
+                      className="w-full flex items-center justify-center gap-2 h-9 bg-cc-base-surface text-cc-text-high border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider hover:bg-cc-gridline disabled:opacity-50 transition-all"
+                    >
+                      <Users size={13} /> Export Candidates
+                    </button>
+                  </div>
+
+                  {/* Export Finances */}
+                  <div className="bg-cc-base-elevated border border-cc-gridline rounded p-4">
+                    <h3 className="font-mono text-[13px] text-cc-text-high mb-2">Finances</h3>
+                    <p className="font-sans text-[12px] text-cc-text-mid mb-4">Export payment records & ledger.</p>
+                    <button
+                      onClick={() => handleExportBackup('finances')}
+                      disabled={isExporting}
+                      className="w-full flex items-center justify-center gap-2 h-9 bg-cc-base-surface text-cc-text-high border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider hover:bg-cc-gridline disabled:opacity-50 transition-all"
+                    >
+                      <IndianRupee size={13} /> Export Finances
+                    </button>
+                  </div>
+
+                  {/* Export Audit Logs */}
+                  <div className="bg-cc-base-elevated border border-cc-gridline rounded p-4">
+                    <h3 className="font-mono text-[13px] text-cc-text-high mb-2">Audit Logs</h3>
+                    <p className="font-sans text-[12px] text-cc-text-mid mb-4">Export system audit trails.</p>
+                    <button
+                      onClick={() => handleExportBackup('audit')}
+                      disabled={isExporting}
+                      className="w-full flex items-center justify-center gap-2 h-9 bg-cc-base-surface text-cc-text-high border border-cc-gridline rounded font-mono text-[10px] font-semibold uppercase tracking-wider hover:bg-cc-gridline disabled:opacity-50 transition-all"
+                    >
+                      <Activity size={13} /> Export Audit Logs
+                    </button>
+                  </div>
+
+
+                  {/* Export Full CRM Backup */}
+                  <div className="md:col-span-2 bg-cc-base-elevated border border-cc-gridline rounded p-4 border-l-4 border-l-cc-warm-primary">
+                    <h3 className="font-mono text-[13px] text-cc-text-high mb-2">Full CRM Backup</h3>
+                    <p className="font-sans text-[12px] text-cc-text-mid mb-4">Complete backup of all sheets.</p>
+                    <button
+                      onClick={() => handleExportBackup('full')}
+                      disabled={isExporting}
+                      className="w-full flex items-center justify-center gap-2 h-9 bg-cc-warm-primary text-white rounded font-mono text-[10px] font-semibold uppercase tracking-wider hover:bg-cc-warm-primary-hover disabled:opacity-50 transition-all"
+                    >
+                      <Database size={13} /> Export Full CRM Backup
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>
 
+            {/* Change Log Table */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.4 }}
+            >
+              <div className="bg-cc-base-surface border border-cc-gridline rounded-lg p-6 shadow-2xl relative overflow-hidden backdrop-blur-md">
+                <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-cc-gridline/50">
+                  <Activity size={15} className="text-cc-warm-text" />
+                  <span className="section-header">SYSTEM CHANGE LOG</span>
+                </div>
+                
+                <div className="overflow-x-auto">
+                  {auditLogs && auditLogs.length > 0 ? (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-cc-gridline">
+                          <th className="py-2 px-3 font-mono text-[10px] font-semibold uppercase text-cc-text-mid">Date & Time</th>
+                          <th className="py-2 px-3 font-mono text-[10px] font-semibold uppercase text-cc-text-mid">Candidate</th>
+                          <th className="py-2 px-3 font-mono text-[10px] font-semibold uppercase text-cc-text-mid">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {auditLogs.slice(0, 15).map((log) => {
+                          const dt = new Date(log.timestamp);
+                          const dateStr = dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                          const timeStr = dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+                          // Check if description has "Candidate Updated" or if we have candidateId to map name
+                          let candidateName = '-';
+                          const candidate = candidates.find(c => c.id === log.candidateId);
+                          if (candidate) candidateName = candidate.fullName;
+                          else if (log.candidateId === 'N/A') candidateName = log.reason || log.description.split(' ')[0] || '-'; // Hack for contact mail where candidate is N/A
+                          
+                          return (
+                            <tr key={log.id} className="border-b border-cc-gridline/50 hover:bg-cc-base-elevated transition-colors">
+                              <td className="py-2 px-3 font-sans text-[12px] text-cc-text-mid whitespace-nowrap">
+                                <span className="text-cc-text-high">{dateStr}</span> <span className="text-cc-text-low text-[11px]">{timeStr}</span>
+                              </td>
+                              <td className="py-2 px-3 font-sans text-[13px] font-medium text-cc-text-high">{candidateName}</td>
+                              <td className="py-2 px-3 font-sans text-[13px] text-cc-text-mid">{log.description}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="py-8 text-center border rounded border-cc-gridline border-dashed">
+                      <p className="font-sans text-[13px] text-cc-text-mid">No system changes recorded yet.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
 
           </div>
         </div>

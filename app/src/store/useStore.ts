@@ -32,6 +32,12 @@ interface AppState {
   lastSyncResult: SyncResult | null;
   dataSource: 'gas' | 'local' | 'mock';
   dashboardMetrics: DashboardMetrics | null;
+  cacheMetadata: {
+    candidates: number | null;
+    metrics: number | null;
+    payments: Record<string, number>;
+    auditLogs: number | null;
+  };
 
   // Actions
   setSearchQuery: (q: string) => void;
@@ -52,16 +58,17 @@ interface AppState {
   updateFinancialPipeline: (candidateId: string, pipelineType: PipelineType, updates: Partial<Candidate['financials'][0]>) => void;
   updateSettings: (settings: AppSettings) => void;
   addPaymentRecord: (payment: PaymentRecord) => Promise<{ success: boolean; error?: string }>;
+  updatePaymentRecord: (paymentId: string, updates: Partial<PaymentRecord>) => Promise<{ success: boolean; error?: string }>;
   addAuditLog: (log: AuditLogEntry) => void;
   getCandidateById: (id: string) => Candidate | undefined;
   getFilteredCandidates: () => Candidate[];
   login: (email: string, password: string) => boolean;
   logout: () => void;
-  fetchInitialData: () => Promise<void>;
+  fetchInitialData: (force?: boolean) => Promise<void>;
   syncCandidates: () => Promise<SyncResult | null>;
-  refreshDashboard: () => Promise<void>;
-  loadPaymentsForCandidate: (candidateId: string) => Promise<void>;
-  loadAuditLogs: () => Promise<void>;
+  refreshDashboard: (force?: boolean) => Promise<void>;
+  loadPaymentsForCandidate: (candidateId: string, force?: boolean) => Promise<void>;
+  loadAuditLogs: (force?: boolean) => Promise<void>;
   rebuildFinancialLedger: () => Promise<{ success: boolean; error?: string; summary?: any }>;
   
   getCalculatedDashboardMetrics: () => DashboardMetrics;
@@ -218,18 +225,33 @@ export const useStore = create<AppState>((set, get) => ({
   lastSyncResult: null,
   dataSource: 'gas',
   dashboardMetrics: null,
+  cacheMetadata: {
+    candidates: null,
+    metrics: null,
+    payments: {},
+    auditLogs: null,
+  },
   
   dateFilterType: 'all',
   customDateRange: null,
   dateFilterTarget: 'joining',
 
   // ─── Data fetching ──────────────────────────────────────────
-  fetchInitialData: async () => {
+  fetchInitialData: async (force = false) => {
     // Don't block if already fetching — allow refresh calls from Dashboard mount
     if (get().isFetchingData) {
       console.log('[store] fetchInitialData skipped — already in progress');
       return;
     }
+
+    if (!force && get().cacheMetadata.candidates) {
+      const elapsed = Date.now() - get().cacheMetadata.candidates!;
+      if (elapsed < 5 * 60 * 1000) {
+        console.log('[store] fetchInitialData using cached data');
+        return;
+      }
+    }
+
     set({ isFetchingData: true, syncStatus: 'syncing' });
 
     // Log which URL we're hitting so users can verify Settings
@@ -295,16 +317,17 @@ export const useStore = create<AppState>((set, get) => ({
           });
         }
 
-        set({
+        set((state) => ({
           candidates: mappedCandidates,
           trackedCandidates: mergedTracked,
           paymentRecords: mappedPayments,
           syncStatus: 'success',
           lastSyncTimestamp: response.timestamp || new Date().toISOString(),
           lastSyncResult: syncResult,
-          dataSource: get().settings.isOfflineMode ? 'local' : 'gas',
+          dataSource: state.settings.isOfflineMode ? 'local' : 'gas',
           isFetchingData: false,
-        });
+          cacheMetadata: { ...state.cacheMetadata, candidates: Date.now() },
+        }));
         
         get().loadAuditLogs();
 
@@ -342,10 +365,10 @@ export const useStore = create<AppState>((set, get) => ({
     set({ syncStatus: 'syncing' });
     try {
       const result = await sheetsApi.syncCandidates();
-      // After sync, refresh the full data
-      await get().fetchInitialData();
-      await get().refreshDashboard();
-      await get().loadAuditLogs();
+      // After sync, refresh the full data (force refresh)
+      await get().fetchInitialData(true);
+      await get().refreshDashboard(true);
+      await get().loadAuditLogs(true);
       set({ lastSyncResult: result });
       return result;
     } catch (err) {
@@ -355,11 +378,17 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  refreshDashboard: async () => {
+  refreshDashboard: async (force = false) => {
     try {
+      if (!force && get().cacheMetadata.metrics) {
+        if (Date.now() - get().cacheMetadata.metrics! < 5 * 60 * 1000) return;
+      }
       const metrics = await sheetsApi.getDashboardMetrics();
       if (metrics && metrics.success) {
-        set({ dashboardMetrics: metrics });
+        set((state) => ({ 
+          dashboardMetrics: metrics,
+          cacheMetadata: { ...state.cacheMetadata, metrics: Date.now() }
+        }));
       }
     } catch (err) {
       console.error('[store] refreshDashboard failed:', err);
@@ -372,8 +401,8 @@ export const useStore = create<AppState>((set, get) => ({
       if (!response || !response.success) {
         return { success: false, error: response?.error || 'Failed to rebuild ledger' };
       }
-      // Re-fetch data to reflect the rebuilt ledger
-      await get().fetchInitialData();
+      // Re-fetch data to reflect the rebuilt ledger (force refresh)
+      await get().fetchInitialData(true);
       return { success: true, summary: response.summary };
     } catch (err: any) {
       console.error('[store] Error rebuilding ledger:', err);
@@ -550,9 +579,8 @@ export const useStore = create<AppState>((set, get) => ({
       await sheetsApi.addPayment(payload);
       
       // 3. Post-save refresh to ensure full consistency with GAS ledger
-      await get().loadPaymentsForCandidate(payment.candidateId);
-      await get().loadAuditLogs();
-      get().refreshDashboard(); // Refresh overall metrics
+      await get().loadPaymentsForCandidate(payment.candidateId, true);
+      await get().loadAuditLogs(true);
       
       return { success: true };
     } catch (err: any) {
@@ -562,12 +590,79 @@ export const useStore = create<AppState>((set, get) => ({
       return { success: false, error: err.message || 'Failed to sync to Google Sheets' };
     }
   },
+  updatePaymentRecord: async (paymentId, updates) => {
+    const state = get();
+    const existing = state.paymentRecords.find(p => p.id === paymentId);
+    if (!existing) return { success: false, error: 'Payment not found locally' };
+
+    const originalCandidates = state.candidates;
+    const originalPaymentRecords = state.paymentRecords;
+
+    const oldAmount = existing.amount;
+    const newAmount = updates.amount !== undefined ? updates.amount : oldAmount;
+    const oldPipelineType = existing.pipelineType;
+    
+    // Map payment type label to pipeline key for local state update
+    const pipelineTypeMap: Record<string, string> = {
+      'Registration': 'registration', 'Registration Fee': 'registration',
+      'Course Fee': 'course',
+      'Document Fee': 'document', 'Document': 'document',
+      'Placement Fee': 'placement', 'Placement': 'placement',
+    };
+    const mappedType = pipelineTypeMap[updates.paymentType || existing.paymentType || ''];
+    const newPipelineType = updates.pipelineType || (mappedType as import('@/types').PipelineType) || oldPipelineType;
+
+    // 1. Optimistic Update
+    set((s) => {
+      const updatedPayment = { ...existing, ...updates, pipelineType: newPipelineType as import('@/types').PipelineType };
+      
+      const nextCandidates = s.candidates.map((c) => {
+        if (c.id !== existing.candidateId) return c;
+        return {
+          ...c,
+          financials: c.financials.map((f) => {
+            let nextPaidToDate = f.paidToDate;
+            if (f.pipelineType === oldPipelineType) {
+              nextPaidToDate -= oldAmount; // Remove from old
+            }
+            if (f.pipelineType === newPipelineType) {
+              nextPaidToDate += newAmount; // Add to new
+            }
+            return { ...f, paidToDate: nextPaidToDate };
+          }),
+        };
+      });
+
+      return {
+        paymentRecords: s.paymentRecords.map(p => p.id === paymentId ? updatedPayment : p),
+        candidates: nextCandidates
+      };
+    });
+
+    try {
+      await sheetsApi.updatePayment(paymentId, updates);
+      
+      // Refresh
+      await get().loadPaymentsForCandidate(existing.candidateId, true);
+      await get().loadAuditLogs(true);
+      return { success: true };
+    } catch (err: any) {
+      console.error('[store] Failed to update payment in GAS:', err);
+      // Revert optimistic update
+      set({ candidates: originalCandidates, paymentRecords: originalPaymentRecords });
+      return { success: false, error: err.message || 'Failed to update in Google Sheets' };
+    }
+  },
+
   addAuditLog: (log) => set((s) => ({
     auditLogs: [log, ...s.auditLogs],
   })),
 
-  loadAuditLogs: async () => {
+  loadAuditLogs: async (force = false) => {
     try {
+      if (!force && get().cacheMetadata.auditLogs) {
+        if (Date.now() - get().cacheMetadata.auditLogs! < 5 * 60 * 1000) return;
+      }
       const logs = await sheetsApi.getAuditLogsForCandidate('');
       if (logs && logs.length > 0) {
         const mappedLogs: AuditLogEntry[] = logs.map(row => {
@@ -594,7 +689,10 @@ export const useStore = create<AppState>((set, get) => ({
           };
         });
 
-        set({ auditLogs: mappedLogs.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) });
+        set((state) => ({ 
+          auditLogs: mappedLogs.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+          cacheMetadata: { ...state.cacheMetadata, auditLogs: Date.now() }
+        }));
       }
     } catch (err) {
       console.warn('[store] loadAuditLogs failed:', err);
@@ -602,8 +700,15 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   // ─── Load real financials from GAS (Financial_Ledger) ──────────────
-  loadPaymentsForCandidate: async (candidateId) => {
+  loadPaymentsForCandidate: async (candidateId, force = false) => {
     try {
+      if (!force && get().cacheMetadata.payments[candidateId]) {
+        if (Date.now() - get().cacheMetadata.payments[candidateId] < 5 * 60 * 1000) {
+          console.log('[store] loadPaymentsForCandidate using cached data for', candidateId);
+          return;
+        }
+      }
+
       // ── PRIMARY: read from Financial_Ledger (authoritative, server-side calculated)
       const ledgerRows = await sheetsApi.getFinancialsForCandidate(candidateId);
 
@@ -646,6 +751,7 @@ export const useStore = create<AppState>((set, get) => ({
               }),
             };
           }),
+          cacheMetadata: { ...s.cacheMetadata, payments: { ...s.cacheMetadata.payments, [candidateId]: Date.now() } },
         }));
         console.log('[store] Financial_Ledger loaded for', candidateId, '-', ledgerRows.length, 'pipelines');
         return;
@@ -697,6 +803,7 @@ export const useStore = create<AppState>((set, get) => ({
             })),
           };
         }),
+        cacheMetadata: { ...s.cacheMetadata, payments: { ...s.cacheMetadata.payments, [candidateId]: Date.now() } },
       }));
     } catch (err) {
       console.error('[store] loadPaymentsForCandidate failed:', err);

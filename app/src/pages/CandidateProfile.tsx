@@ -41,17 +41,20 @@ export default function CandidateProfile() {
     setActiveProfileId,
     loadPaymentsForCandidate,
     loadAuditLogs,
+    isFetchingData,
   } = useStore();
   const candidate = id ? getCandidateById(id) : undefined;
 
   useEffect(() => {
     if (id) {
       setActiveProfileId(id);
-      // Load real payment data from Google Sheets to populate Paid to Date
-      loadPaymentsForCandidate(id);
+      // Wait for any pending data loads so that we don't overwrite empty state with fetched ledger data
+      if (candidate && !isFetchingData) {
+        loadPaymentsForCandidate(id);
+      }
     }
     return () => setActiveProfileId(null);
-  }, [id, setActiveProfileId, loadPaymentsForCandidate]);
+  }, [id, setActiveProfileId, !!candidate, isFetchingData, loadPaymentsForCandidate]);
 
   const [activePipeline, setActivePipeline] = useState<PipelineType>('registration');
   const [newCompany, setNewCompany] = useState('');

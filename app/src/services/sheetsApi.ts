@@ -319,7 +319,7 @@ export const sheetsApi = {
    */
   updateFinancialPipeline: async (candidateId: string, pipelineType: string, baseFee: number, adjustments: any[]) => {
     const gasUrl = getGasUrl();
-    const totalAdjustments = adjustments.reduce((sum, a) => sum + a.amount, 0);
+    const totalAdjustments = adjustments.reduce((sum, a) => sum + Math.abs(Number(a.amount) || 0), 0);
     try {
       const response = await fetchWithTimeout(gasUrl, {
         method: 'POST',
@@ -483,6 +483,36 @@ export const sheetsApi = {
       } catch {
         // silently fail fallback
       }
+      throw error;
+    }
+  },
+
+  /**
+   * Update an existing payment in Payment_Records Google Sheet AND update Financial_Ledger.
+   */
+  updatePayment: async (paymentId: string, updates: Record<string, any>) => {
+    const gasUrl = getGasUrl();
+    try {
+      const urlParams = new URLSearchParams({
+        action: 'updatePayment',
+        paymentId,
+        ...updates,
+        timestamp: new Date().toISOString()
+      });
+
+      const response = await fetchWithTimeout(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: urlParams,
+      }, 20000);
+
+      if (!response.ok) throw new Error(`GAS updatePayment failed: ${response.status}`);
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || 'Failed to update payment in GAS');
+      console.log('[sheetsApi] Payment updated in GAS:', paymentId);
+      return result;
+    } catch (error) {
+      console.error('[sheetsApi] GAS updatePayment failed:', error);
       throw error;
     }
   },

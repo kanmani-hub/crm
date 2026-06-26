@@ -205,7 +205,11 @@ function doPost(e) {
           // Allow passing either 'FullName' or 'fullName' from the frontend
           var headerName = key;
           if (key.toLowerCase() === 'fullname') headerName = 'FullName';
-          if (key.toLowerCase() === 'dob' || key.toLowerCase() === 'dateofbirth') headerName = 'dateOfBirth';
+          if (key === 'dateOfBirth') headerName = 'DOB';
+          if (key === 'phone') headerName = 'MOB NO';
+          if (key === 'bgvStatus') headerName = 'BGV Status';
+          if (key === 'branch') headerName = 'BRANCH';
+          if (key === 'course') headerName = 'COURSE';
           
           var oldVal = existingData[headerName] || existingData[key] || '';
           var newVal = updates[key];
@@ -264,14 +268,17 @@ function doPost(e) {
 
         for (var i = 1; i < data.length; i++) {
           var obj = rowToObj(headers, data[i]);
-          if (obj['candidateId'] === candidateId && obj['pipelineType'] === pipelineType) {
+          var rCand = String(obj['candidateId'] || '').trim();
+          var rPipe = String(obj['pipelineType'] || '').trim().toLowerCase();
+          if (rCand === String(candidateId).trim() && rPipe === String(pipelineType).trim().toLowerCase()) {
             targetRow = i + 1;
             existingPaid = parseFloat(obj['paidToDate']) || 0;
             break;
           }
         }
 
-        var netPayable = parseFloat(baseFee) + totalAdjustments;
+        var totalAdjustments = parseFloat(params.totalAdjustments) || 0;
+        var netPayable = Math.max(0, parseFloat(baseFee) - Math.abs(totalAdjustments));
         var pendingDues = netPayable - existingPaid;
         var now = new Date().toISOString();
 
@@ -466,6 +473,104 @@ function doPost(e) {
       }
     }
 
+    if (action === 'updatePayment') {
+      try {
+        var paymentId     = (params.paymentId     || '').trim();
+        var paymentType   = (params.paymentType   || '').trim();
+        var pipelineType  = (params.pipelineType  || '').trim();
+        var amount        = params.amount !== undefined && params.amount !== '' ? parseFloat(params.amount) : undefined;
+        var paymentDate   = (params.paymentDate   || '').trim();
+        var remarks       = (params.remarks       || '').trim();
+        var transactionRef= (params.transactionRef|| '').trim();
+        var notes         = (params.notes         || remarks).trim();
+        var userStamp     = (params.userStamp     || 'Python HR').trim();
+        var timestamp     = (params.timestamp     || new Date().toISOString()).trim();
+
+        if (!paymentId) {
+          return ContentService.createTextOutput(JSON.stringify({ success: false, error: 'paymentId is required' })).setMimeType(ContentService.MimeType.JSON);
+        }
+
+        var ss = SpreadsheetApp.getActiveSpreadsheet();
+        var paymentSheet = ss.getSheetByName(PAYMENT_RECORDS_SHEET);
+        if (!paymentSheet) {
+          return ContentService.createTextOutput(JSON.stringify({ success: false, error: 'Payment_Records sheet not found' })).setMimeType(ContentService.MimeType.JSON);
+        }
+
+        var data = paymentSheet.getDataRange().getValues();
+        var headers = data[0].map(function(h) { return String(h).trim(); });
+        var targetRowIndex = -1;
+        var existingData = {};
+
+        for (var r = 1; r < data.length; r++) {
+          var rowObj = rowToObj(headers, data[r]);
+          if (String(rowObj['paymentId'] || '').trim() === paymentId) {
+            targetRowIndex = r + 1;
+            existingData = rowObj;
+            break;
+          }
+        }
+
+        if (targetRowIndex === -1) {
+          return ContentService.createTextOutput(JSON.stringify({ success: false, error: 'Payment record not found' })).setMimeType(ContentService.MimeType.JSON);
+        }
+
+        var candidateId = String(existingData['candidateId'] || '').trim();
+        var candidateName = String(existingData['candidateName'] || '').trim();
+        var oldPipelineType = String(existingData['pipelineType'] || '').trim();
+        var oldAmount = parseFloat(existingData['amount'] || 0);
+
+        if (!pipelineType && paymentType) {
+          var labelToKey = {
+            'registration': 'registration', 'Registration': 'registration', 'Registration Fee': 'registration',
+            'course fee': 'course',         'Course Fee': 'course',         'course': 'course',
+            'document fee': 'document',     'Document Fee': 'document',     'document': 'document', 'Document': 'document',
+            'placement fee': 'placement',   'Placement Fee': 'placement',   'placement': 'placement', 'Placement': 'placement'
+          };
+          pipelineType = labelToKey[paymentType] || paymentType.toLowerCase().replace(/\s+/g, '_');
+        }
+
+        var newPipelineType = pipelineType || oldPipelineType;
+        var newAmount = amount !== undefined ? amount : oldAmount;
+        var newPaymentType = paymentType || String(existingData['paymentType'] || '').trim();
+        var newDate = paymentDate || String(existingData['paymentDate'] || '').trim();
+        var newRef = transactionRef || String(existingData['transactionRef'] || '').trim();
+        var newNotes = notes || String(existingData['notes'] || existingData['remarks'] || '').trim();
+
+        // Update the row
+        if (paymentType) setByHeader(paymentSheet, headers, targetRowIndex, 'paymentType', newPaymentType);
+        if (pipelineType) setByHeader(paymentSheet, headers, targetRowIndex, 'pipelineType', newPipelineType);
+        if (amount !== undefined) setByHeader(paymentSheet, headers, targetRowIndex, 'amount', newAmount);
+        if (paymentDate) setByHeader(paymentSheet, headers, targetRowIndex, 'paymentDate', newDate);
+        if (transactionRef) setByHeader(paymentSheet, headers, targetRowIndex, 'transactionRef', newRef);
+        if (notes) {
+          setByHeader(paymentSheet, headers, targetRowIndex, 'notes', newNotes);
+          if (headers.indexOf('remarks') !== -1) {
+            setByHeader(paymentSheet, headers, targetRowIndex, 'remarks', newNotes);
+          }
+        }
+        if (headers.indexOf('updatedAt') !== -1) {
+          setByHeader(paymentSheet, headers, targetRowIndex, 'updatedAt', timestamp);
+        }
+
+        SpreadsheetApp.flush();
+
+        // Recalculate Financial Ledger
+        if (oldPipelineType !== newPipelineType) {
+          upsertFinancialLedger(ss, candidateId, candidateName, oldPipelineType, String(existingData['paymentType']));
+        }
+        upsertFinancialLedger(ss, candidateId, candidateName, newPipelineType, newPaymentType);
+
+        var auditDesc = 'Updated Payment (was ₹' + oldAmount + ' ' + oldPipelineType + ')';
+        logAuditToSheet(ss, candidateId, candidateName, auditDesc, '', '₹' + newAmount + ' ' + newPipelineType, userStamp, timestamp);
+        SpreadsheetApp.flush();
+
+        return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Payment updated' })).setMimeType(ContentService.MimeType.JSON);
+      } catch (innerErr) {
+        Logger.log('updatePayment ERROR: ' + innerErr.toString());
+        return ContentService.createTextOutput(JSON.stringify({ success: false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
     var to = params.to || '';
     var cc = params.cc || '';
     var formType = params.formType || 'Registration';
@@ -586,10 +691,10 @@ function onFormSubmit(e) {
     // --- REGISTRATION FORM PROCESSING ---
     Logger.log("Detected Registration Form Submission");
     // Use findValue for ALL fields - handles any key variation
-    var fullName    = findValue(namedValues, "FullName");
-    var email       = findValue(namedValues, "EMAIL");
-    var phone       = findValue(namedValues, "MOBNO");
-    var dob         = findValue(namedValues, "DOB");
+    var fullName    = findValue(namedValues, "FullName") || findValue(namedValues, "Name");
+    var email       = findValue(namedValues, "EMAIL") || findValue(namedValues, "EmailAddress");
+    var phone       = findValue(namedValues, "MOBNO") || findValue(namedValues, "Phone") || findValue(namedValues, "ContactNumber") || findValue(namedValues, "PhoneNumber");
+    var dob         = findValue(namedValues, "DOB") || findValue(namedValues, "DateOfBirth");
     var address     = findValue(namedValues, "ADDRESS");
     var branch      = findValue(namedValues, "BRANCH");
     var course      = findValue(namedValues, "DOMAIN");
@@ -706,7 +811,7 @@ function syncMasterCandidates() {
     // Read fields by header name - NEVER by index
     var fullName = String(rowObj['FullName'] || rowObj['fullName'] || '').trim();
     var email    = String(rowObj['email'] || rowObj['tokenEmail'] || '').trim();
-    var phone    = String(rowObj['phone'] || '').trim();
+    var phone    = String(rowObj['phone'] || rowObj['phoneNumber'] || rowObj['Phone Number'] || rowObj['contactNumber'] || rowObj['Contact Number'] || rowObj['MobNo'] || rowObj['Phone'] || '').trim();
     var dob      = String(rowObj['dob'] || rowObj['dateOfBirth'] || '').trim();
     var addr     = String(rowObj['address'] || '').trim();
     var branch   = String(rowObj['branch'] || '').trim();
@@ -730,7 +835,16 @@ function syncMasterCandidates() {
       // UPDATE existing Master row using DYNAMIC headers
       if (fullName) setByHeader(masterSheet, masterHeaders, targetMasterRow, 'FullName', fullName);
       if (email) setByHeader(masterSheet, masterHeaders, targetMasterRow, 'email', email);
-      if (phone) setByHeader(masterSheet, masterHeaders, targetMasterRow, 'phone', phone);
+      
+      // Do not overwrite existing valid phone number unnecessarily
+      if (phone) {
+        var existingRowObj = rowToObj(masterHeaders, masterData[targetMasterRow - 1]);
+        var existingPhone = String(existingRowObj['phone'] || '').trim();
+        if (!existingPhone) {
+          setByHeader(masterSheet, masterHeaders, targetMasterRow, 'phone', phone);
+        }
+      }
+      
       if (branch) setByHeader(masterSheet, masterHeaders, targetMasterRow, 'branch', branch);
       if (course) setByHeader(masterSheet, masterHeaders, targetMasterRow, 'course', course);
       if (batch) setByHeader(masterSheet, masterHeaders, targetMasterRow, 'batchName', batch);
@@ -1057,7 +1171,7 @@ function upsertFinancialLedger(ss, candidateId, candidateName, pipelineType, pip
     }
   }
 
-  var netPayable  = existingBaseFee + existingAdjustments;
+  var netPayable  = Math.max(0, existingBaseFee - Math.abs(existingAdjustments));
   var pendingDues = netPayable - totalPaid;
 
   Logger.log('upsertFinancialLedger: netPayable=' + netPayable + ' paidToDate=' + totalPaid + ' pendingDues=' + pendingDues + ' targetRow=' + targetRow);
@@ -1463,7 +1577,7 @@ function rebuildFinancialLedger() {
     var totalAdjustments = oldL.totalAdjustments || 0;
     var adjustmentsJson  = oldL.adjustmentsJson || '[]';
     
-    var netPayable      = baseFee + totalAdjustments;
+    var netPayable      = Math.max(0, baseFee - Math.abs(totalAdjustments));
     var paidToDate      = data.total;
     var pendingDues     = netPayable - paidToDate;
 

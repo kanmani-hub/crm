@@ -80,21 +80,10 @@ export default function Dashboard() {
     }
   };
 
-  // Load candidates on mount + poll every 30 seconds
+  // Load candidates on mount (cached if within TTL)
   useEffect(() => {
-    // Always load candidates fresh on dashboard mount
     fetchInitialData();
     refreshDashboard();
-
-    const interval = setInterval(async () => {
-      try {
-        await fetchInitialData();
-      } catch (err) {
-        console.error('Auto-refresh failed', err);
-      }
-    }, 30000);
-
-    return () => clearInterval(interval);
   }, [fetchInitialData, refreshDashboard]);
 
   const validateEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
@@ -462,11 +451,23 @@ export default function Dashboard() {
                 </span>
               </>
             )}
-            {syncStatus === 'syncing' && (
+            {syncStatus === 'syncing' ? (
               <>
                 <span className="text-cc-gridline">·</span>
                 <RefreshCw size={10} className="animate-spin text-cc-warm-text" />
                 <span className="font-mono text-[10px] text-cc-warm-text">Syncing...</span>
+              </>
+            ) : (
+              <>
+                <span className="text-cc-gridline">·</span>
+                <button 
+                  onClick={() => { fetchInitialData(true); refreshDashboard(true); }}
+                  className="font-mono text-[10px] text-cc-text-mid hover:text-cc-warm-text flex items-center gap-1 transition-colors"
+                  title="Manual Refresh"
+                >
+                  <RefreshCw size={10} />
+                  Refresh
+                </button>
               </>
             )}
           </motion.div>

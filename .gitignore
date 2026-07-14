@@ -8,6 +8,7 @@ dist-ssr/
 *.log
 *.local
 .env
+.env.*
 server/.env
 .DS_Store
 .idea/

@@ -1,0 +1,439 @@
+FullName, EMAIL, MOB NO, MODE, BRANCH, DOMAIN, DOB, ADDRESS, REMARKS
+submissionId, tokenEmail, FullName, email, phone, dob, address, course, branch, submittedAt, syncStatus, candidateId
+candidateId, FullName, email, phone, batchName, dateOfBirth, address, branch, course, dateOfJoining, currentStatus, bgvStatus, placed, placedCompany, trackedStatus, trackedAt, createdAt, updatedAt
+'';
+true,
+getCandidates(),
+getFinancials('').financials,
+getPayments('').payments,
+new Date().toISOString()
+true, message: 'Financial ledger rebuilt successfully' };
+true, candidates: getDirectPlacementCandidates(), timestamp: new Date().toISOString() };
+true,
+getCandidates(),
+getFinancials('').financials,
+getDashboardMetrics(),
+new Date().toISOString()
+false, error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+true, message: 'Financial ledger rebuilt successfully' })).setMimeType(ContentService.MimeType.JSON);
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+' + innerErr.toString());
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+' + innerErr.toString());
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+' + innerErr.toString());
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+' + innerErr.toString());
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+' + innerErr.toString());
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'recipient, subject, and message are required' })).setMimeType(ContentService.MimeType.JSON);
+recipient,
+subject,
+message
+' + mailErr.toString());
+' + mailErr.toString();
+   mailId,
+recipient,
+  subject,
+  message,
+timestamp,
+   mailStatus
+true,
+'Contact mail recorded',
+mailId,
+mailStatus
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'candidateId is required' })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'Master_Candidates sheet not found' })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'No data in Master_Candidates' })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'Candidate not found' })).setMimeType(ContentService.MimeType.JSON);
+true, message: 'Candidate updated' })).setMimeType(ContentService.MimeType.JSON);
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'candidateId and pipelineType required' })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'Financial_Ledger sheet not found' })).setMimeType(ContentService.MimeType.JSON);
+ledgerId,
+candidateId,
+'',
+pipelineType,
+pipelineType,
+baseFee,
+totalAdjustments,
+adjustmentsJson,
+netPayable,
+0,
+netPayable,
+now
+true, message: 'Financial pipeline updated' })).setMimeType(ContentService.MimeType.JSON);
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'candidateId and actionType are required' })).setMimeType(ContentService.MimeType.JSON);
+true, message: 'Audit log added' })).setMimeType(ContentService.MimeType.JSON);
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+"Course Fee"
+"course"
+'registration', 'Registration': 'registration', 'Registration Fee': 'registration',
+'course',         'Course Fee': 'course',         'course': 'course',
+'document',     'Document Fee': 'document',     'document': 'document', 'Document': 'document',
+'placement',   'Placement Fee': 'placement',   'placement': 'placement', 'Placement': 'placement'
+' + candidateId);
+' + candidateName);
+' + paymentType);
+' + pipelineType);
+' + amount);
+false, error: 'candidateId is required' })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'paymentType is required' })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'amount must be greater than 0' })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'Master_Candidates sheet not found' })).setMimeType(ContentService.MimeType.JSON);
+candidateId ' + candidateId + ' not found in Master_Candidates.');
+false, error: 'candidateId does not exist in Master_Candidates' })).setMimeType(ContentService.MimeType.JSON);
+candidateId, candidateName, pipelineType, pipelineLabel, amount, and paymentDate must never be blank. Got: ' +
+' + validationError);
+false, error: validationError })).setMimeType(ContentService.MimeType.JSON);
+Payment_Records headers = ' + JSON.stringify(prHeaders));
+     paymentId,
+   candidateId,
+ candidateName,
+   paymentType,
+  pipelineType,
+        amount,
+   paymentDate,
+transactionRef,
+         notes,
+       remarks,
+     timestamp,
+     userStamp,
+     createdAt
+Row appended to Payment_Records. paymentId=' + paymentId);
+  true,
+  'Payment saved and Financial_Ledger updated',
+paymentId,
+createdAt
+' + innerErr.toString());
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+undefined;
+false, error: 'paymentId is required' })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'Payment_Records sheet not found' })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'Payment record not found' })).setMimeType(ContentService.MimeType.JSON);
+'registration', 'Registration': 'registration', 'Registration Fee': 'registration',
+'course',         'Course Fee': 'course',         'course': 'course',
+'document',     'Document Fee': 'document',     'document': 'document', 'Document': 'document',
+'placement',   'Placement Fee': 'placement',   'placement': 'placement', 'Placement': 'placement'
+oldAmount;
+true, message: 'Payment updated' })).setMimeType(ContentService.MimeType.JSON);
+' + innerErr.toString());
+false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+Background Verification Form' : 'PyCRM: New Candidate Registration Form';
+to, subject: subject, htmlBody: htmlBody };
+true, message: 'Email sent to ' + to })).setMimeType(ContentService.MimeType.JSON);
+false, error: 'Missing required parameters' })).setMimeType(ContentService.MimeType.JSON);
+false, error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+"FullName", "Full Name", "FULLNAME", "FullName *", "FullName:", etc.
+{};
+'';
+responseId,
+bgvName,
+bgvPhone,
+bgvDob,
+bgvFather,
+bgvAddress,
+bgvCourse,
+bgvBatch,
+bgvDocAmt,
+submittedAt,
+'pending'
+Registration_Responses sheet not found");
+submissionId,
+email,
+fullName,
+email,
+phone,
+dob,
+address,
+course,
+branch,
+submittedAt,
+'pending',
+'',
+mode,
+mode,
+remarks
+" + err.toString());
+Registration_Responses -> Master_Candidates
+Required sheets not found");
+false, error: 'Required sheets not found', synced: 0, skipped: 0, total: 0 };
+true, synced: 0, skipped: 0, total: 0, message: 'No form responses found' };
+FullName=" + fullName + " email=" + email + " dob=" + dob + " address=" + addr);
+Updated existing Master row " + targetMasterRow + " FullName=" + fullName);
+candidateId,
+fullName,
+email,
+phone,
+batch,
+branch,
+course,
+now.split('T')[0],
+'active',
+'pending',
+'FALSE',
+'',
+'form-pending',
+now,
+now,
+now
+New Master row candidateId=" + candidateId + " FullName=" + fullName + " email=" + email + " dob=" + dob + " address=" + addr);
+candidateId, fullName: fullName, email: email, phone: phone });
+synced=" + synced + " skipped=" + skipped + " total=" + (regData.length - 1));
+true,
+synced,
+skipped,
+regData.length - 1,
+newCandidates,
+now
+         true,
+ totalCandidates,
+      newJoinees,
+      bgvPending,
+    bgvCompleted,
+     placedCount,
+         revenue,
+paymentsReceived,
+     pendingDues,
+0, // Computed on frontend
+      addedToday,
+       new Date().toISOString()
+true,
+{
+getSheetData(MASTER_SHEET_NAME),
+getSheetData(REGISTRATION_SHEET),
+getSheetData(PAYMENT_RECORDS_SHEET),
+getSheetData(FINANCIAL_LEDGER_SHEET),
+getSheetData(SYSTEM_AUDIT_LOGS_SHEET),
+getSheetData(BGV_RESPONSES_SHEET)
+new Date().toISOString()
+true, payments: [], timestamp: new Date().toISOString() };
+true, payments: [], timestamp: new Date().toISOString() };
+true, payments: payments, timestamp: new Date().toISOString() };
+never write a ledger row without required fields
+Missing required fields. candidateId=' + candidateId + ' candidateName=' + candidateName + ' pipelineType=' + pipelineType + ' pipelineLabel=' + pipelineLabel);
+candidateId=' + candidateId + ' pipelineType=' + pipelineType + ' pipelineLabel=' + pipelineLabel);
+ 0,     'Registration':  0,
+       30000, 'Course Fee':    30000,
+     25000, 'Document Fee':  25000,
+    100000,'Placement Fee': 100000
+(defaultFees[pipelineLabel] !== undefined ? defaultFees[pipelineLabel] : 0);
+netPayable=' + netPayable + ' paidToDate=' + totalPaid + ' pendingDues=' + pendingDues + ' targetRow=' + targetRow);
+only when candidateId is confirmed non-empty ─────
+        ledgerId,
+     candidateId,
+   candidateName,
+    pipelineType,
+   pipelineLabel,
+         existingBaseFee,
+existingAdjustments,
+      netPayable,
+      totalPaid,
+     pendingDues,
+       now
+INSERT new row for candidateId=' + candidateId + ' pipelineType=' + pipelineType);
+UPDATE row ' + targetRow + ' for candidateId=' + candidateId);
+Created new sheet "' + sheetName + '" with ' + requiredColumns.length + ' columns');
+Added missing column "' + requiredColumns[i] + '" at col ' + newColIndex + ' to sheet "' + sheetName + '"');
+true, financials: [], timestamp: new Date().toISOString() };
+true, financials: [], timestamp: new Date().toISOString() };
+true, financials: financials, timestamp: new Date().toISOString() };
+      'log_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+  candidateId,
+candidateName,
+   actionType,
+     oldValue,
+     newValue,
+    timestamp,
+         userStamp
+true, logs: [], timestamp: new Date().toISOString() };
+true, logs: [], timestamp: new Date().toISOString() };
+true, logs: logs, timestamp: new Date().toISOString() };
+'';
+Payment_Records sheet not found.');
+false, error: 'Payment_Records sheet not found' };
+'Registration Fee',
+      'Course Fee',
+    'Document Fee',
+   'Placement Fee'
+0,
+      30000,
+    25000,
+   100000
+'Full Name' }
+Loaded ' + Object.keys(masterNameMap).length + ' names from Master_Candidates.');
+[];
+{ total, candidateName, pipelineLabel } }
+these 3 fields are truly required ──
+SKIPPED row ' + (r+1) + ' (candId="' + candId + '", pipeKey="' + pipeKey + '", amount=' + amount + ')');
+0, candidateName: candName, pipelineLabel: pipeLabel };
+parseFloat(oldObj['baseFee']) || 0,
+parseFloat(oldObj['totalAdjustments']) || 0,
+String(oldObj['adjustmentsJson'] || '[]')
+Cleared ' + (lastRow - 1) + ' old ledger rows.');
+0, candidateName: candName, pipelineLabel: pipeLabel };
+0;
+defaultFee;
+        'ledger_' + cId + '_' + pType,
+     cId,
+   data.candidateName,
+    pType,
+   data.pipelineLabel,
+         baseFee,
+totalAdjustments,
+ adjustmentsJson,
+      netPayable,
+      paidToDate,
+     pendingDues,
+       now
+             ' + paymentRowsScanned);
+                  ' + validRowsUsed);
+    ' + repairedCandidateName);
+    ' + repairedPipelineLabel);
+      ' + repairedPaymentDate);
+' + rowsSkipped);
+              ' + ledgerRowsWritten);
+true,
+{
+ paymentRowsScanned,
+      validRowsUsed,
+repairedCandidateName,
+repairedPipelineLabel,
+repairedPaymentDate,
+        rowsSkipped,
+  ledgerRowsWritten
+Could not find required sheets.");
+Applied " + fixesApplied + " fixes. Now syncing to Master...");
+BGV_Responses -> Master_Candidates
+Contact Number (primary) -> Name+Course+Batch (fallback)
+Missing ' + BGV_RESPONSES_SHEET + ' sheet.');
+false, error: 'Missing BGV response sheet' };
+true, message: 'No BGV responses found', synced: 0, skipped: 0 };
+false, error: 'No data in Master_Candidates' };
+Map raw Google Form data robustly
+Skipped — missing usable phone and incomplete fallback data (Name/Course).';
+' + reason);
+Name + Course
+Phone
+Skipped — Multiple candidates share phone ' + normPhone + '.';
+' + reason);
+Skipped — No candidate match found (or multiple matches could not be resolved).';
+' + reason);
+Backfilled phone for ' + rowLabel);
+Backfilled dateOfBirth for ' + rowLabel);
+' + rowLabel + ' synced via ' + matchMethod + '.');
+true, synced: synced, skipped: skipped, skipReasons: skipReasons };
+true, candidate: cands[i] };
+false, error: 'Candidate not found' };
+true,
+total,
+active,
+placed,
+bgvPending,
+bgvCompleted,
+revenue,
+pendingDues
+true, synced: 0, skipped: 0 };
+placementId,
+nameObj,
+mobileObj,
+rowObj['yearOfPassing'] || rowObj['yearofpassing'] || '',
+rowObj['currentlyWorking'] || rowObj['currentlyworking'] || '',
+rowObj['experienceType'] || rowObj['experiencetype'] || '',
+companyObj,
+desigObj,
+rowObj['ctc'] || '',
+'FALSE',
+'FALSE',
+'FALSE',
+'FALSE',
+'pending',
+'active',
+'form-pending',
+now,
+now,
+now
+true, synced: synced };
+true, synced: 0, skipped: 0 };
+true, synced: synced, skipped: skipped };
+" + err.message);
+false, error: err.message };
+true, payments: [] };
+true, payments: [] };
+true, payments: payments };
+false, error: err.message };
+true, financials: [] };
+true, financials: [] };
+true, financials: financials };
+false, error: err.message };
+false, error: 'DP_MASTER_SHEET not found' };
+false, error: 'Candidate not found' };
+true, message: 'Candidate updated' };
+false, error: err.message };
+true, financials: [] };
+true, financials: [] };
+true, financials: financials };
+false, error: err.message };
+false, error: 'DP_MASTER_SHEET not found' };
+false, error: 'Candidate not found' };
+true, message: 'Candidate updated' };
+false, error: err.message };
+placementId,
+candidateName,
+0,
+0,
+0,
+0,
+0,
+totalPaid,
+pending,
+status,
+now
+paymentId,
+placementId,
+candidateName,
+paymentType,
+amount,
+params.paymentDate || now.split('T')[0],
+params.remarks || '',
+now,
+params.userStamp || 'System',
+params.transactionRef || ''
+true, paymentId: paymentId };
+" + err.message);
+false, error: err.message };
+false, error: 'DP_PAYMENT_SHEET not found' };
+false, error: 'Payment not found' };
+true, message: 'Payment updated' };
+" + err.message);
+false, error: err.message };
+false, error: 'DP_PAYMENT_SHEET not found' };
+false, error: 'Payment not found' };
+true, message: 'Payment deleted' };
+" + err.message);
+false, error: err.message };
+" + err.message);
+true,
+getSheetData(DP_MASTER_SHEET),
+getSheetData(DP_REGISTRATION_SHEET),
+getSheetData(DP_BGV_SHEET),
+getSheetData(DP_PAYMENT_SHEET),
+getSheetData(DP_FINANCIAL_LEDGER_SHEET),
+getSheetData(DP_AUDIT_LOGS_SHEET),
+new Date().toISOString()
+" + err.message);
+false, error: err.message };
+" + err.message);
+true,
+getSheetData(DP_MASTER_SHEET),
+getSheetData(DP_REGISTRATION_SHEET),
+getSheetData(DP_BGV_SHEET),
+getSheetData(DP_PAYMENT_SHEET),
+getSheetData(DP_FINANCIAL_LEDGER_SHEET),
+getSheetData(DP_AUDIT_LOGS_SHEET),
+new Date().toISOString()

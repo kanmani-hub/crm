@@ -505,6 +505,8 @@ function doPost(e) {
             var actionType = 'Candidate Updated';
             if (headerName.toLowerCase() === 'bgvstatus') actionType = 'BGV Status Updated';
             if (headerName.toLowerCase() === 'placed') actionType = 'Placement Status Updated';
+            if (headerName === 'documentsReceived') actionType = 'Documents Received Updated';
+            if (headerName === 'documentsApplied') actionType = 'Documents Applied Updated';
             
             logAuditToSheet(ss, candidateId, existingCandidateName, actionType, oldVal, newVal, params.userStamp || 'System', now);
           }
@@ -514,7 +516,11 @@ function doPost(e) {
         
         setByHeader(masterSheet, headers, targetRowIndex, 'updatedAt', now);
         
-        return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Candidate updated' })).setMimeType(ContentService.MimeType.JSON);
+        SpreadsheetApp.flush();
+        var finalData = masterSheet.getDataRange().getValues();
+        var finalRowObj = rowToObj(headers, finalData[targetRowIndex - 1]);
+        
+        return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Candidate updated', candidate: finalRowObj })).setMimeType(ContentService.MimeType.JSON);
       } catch (innerErr) {
         return ContentService.createTextOutput(JSON.stringify({ success: false, error: innerErr.toString() })).setMimeType(ContentService.MimeType.JSON);
       }
@@ -3918,7 +3924,7 @@ function addDirectAdjustment(params) {
     if (!sheet) {
       sheet = ss.insertSheet(DP_ADJUSTMENT_SHEET);
     }
-    var cols = ['adjustmentId', 'placementId', 'candidateName', 'pipelineType', 'adjustmentType', 'amount', 'reason', 'notes', 'createdBy', 'createdAt', 'updatedAt'];
+    var cols = ['adjustmentId', 'placementId', 'candidateName', 'pipelineType', 'adjustmentType', 'amount', 'reason', 'notes', 'clientMutationId', 'createdBy', 'createdAt', 'updatedAt'];
     ensureDirectPlacementColumns_(sheet, cols);
     
     var headerRowIdx = getDirectPlacementHeaderRowIndex_(sheet);
@@ -3927,28 +3933,75 @@ function addDirectAdjustment(params) {
     var adjustmentId = generateDirectAdjustmentId_();
     var now = new Date().toISOString();
     
+    var clientMutationId = params.clientMutationId || '';
+    
+    // Check for idempotency
+    if (clientMutationId) {
+      var allData = sheet.getDataRange().getValues();
+      var hIdx = getDirectPlacementHeaderRowIndex_(sheet);
+      var cMutIdx = findHeaderCol(allData[hIdx].map(function(h){return String(h).trim();}), 'clientMutationId');
+      if (cMutIdx !== -1) {
+        for (var i = hIdx + 1; i < allData.length; i++) {
+          if (String(allData[i][cMutIdx]).trim() === clientMutationId) {
+             // Already processed, just return the existing row and recalculate ledger safely
+             var existingAdj = directPlacementRowToObj_(allData[i], getDirectPlacementHeaderMap_(sheet));
+             var updatedLedger = upsertDirectFinancialLedger(ss, placementId, candidateName, pipelineType);
+             return {
+                success: true,
+                adjustmentId: existingAdj.adjustmentId,
+                adjustment: existingAdj,
+                financial: updatedLedger,
+                auditLog: null // We skip audit log for duplicate
+             };
+          }
+        }
+      }
+    }
+    
+    var signedAmount = amount;
+    var uType = String(adjustmentType).toUpperCase().trim();
+    if (uType === 'DISCOUNT' || uType === 'WAIVER' || uType === 'REFUND' || uType === 'REDUCTION') {
+      signedAmount = -Math.abs(amount);
+    } else {
+      signedAmount = Math.abs(amount);
+    }
+    
     var row = buildRowByHeaders(headers, {
       adjustmentId: adjustmentId,
       placementId: placementId,
       candidateName: candidateName,
       pipelineType: pipelineType,
       adjustmentType: adjustmentType,
-      amount: amount,
+      amount: signedAmount, // Save as signed
       reason: reason,
       notes: notes,
+      clientMutationId: clientMutationId,
       createdBy: performedBy,
       createdAt: now,
       updatedAt: now
     });
     
     sheet.appendRow(row);
-    
-    logDirectAudit(ss, placementId, candidateName, 'FINANCE', 'ADJUSTMENT_ADDED', pipelineType + ' ' + adjustmentType + ' of Rs. ' + amount + ' added', '', adjustmentType + ':' + amount, performedBy);
-    
-    upsertDirectFinancialLedger(ss, placementId, candidateName, pipelineType);
     SpreadsheetApp.flush();
     
-    return { success: true, adjustmentId: adjustmentId };
+    // Read the newly saved adjustment back
+    var savedData = sheet.getDataRange().getValues();
+    var savedRow = savedData[savedData.length - 1];
+    var confirmedAdjustment = directPlacementRowToObj_(savedRow, getDirectPlacementHeaderMap_(sheet));
+    
+    // Upsert financial ledger and get updated ledger
+    var updatedLedger = upsertDirectFinancialLedger(ss, placementId, candidateName, pipelineType);
+    
+    var auditMsg = pipelineType + ' ' + adjustmentType + ' of Rs. ' + amount + ' added';
+    var confirmedAuditLog = logDirectAudit(ss, placementId, candidateName, 'FINANCE', 'ADJUSTMENT_ADDED', auditMsg, '', adjustmentType + ':' + amount, performedBy);
+    
+    return { 
+      success: true, 
+      adjustmentId: adjustmentId,
+      adjustment: confirmedAdjustment,
+      financial: updatedLedger,
+      auditLog: confirmedAuditLog
+    };
   } catch(err) {
     return { success: false, error: err.message };
   }
@@ -3991,22 +4044,42 @@ function updateDirectAdjustment(params) {
         headers.push(key);
         sheet.getRange(headerRowIdx + 1, headers.length).setValue(key);
       }
-      setByHeader(sheet, headers, targetRow, key, updates[key]);
+      var finalVal = updates[key];
+      if (key === 'amount') {
+         // Re-apply sign logic if amount or type is changing
+         var uType = String(updates.adjustmentType || oldObj.adjustmentType).toUpperCase().trim();
+         if (uType === 'DISCOUNT' || uType === 'WAIVER' || uType === 'REFUND' || uType === 'REDUCTION') {
+           finalVal = -Math.abs(updates[key]);
+         } else {
+           finalVal = Math.abs(updates[key]);
+         }
+      }
+      setByHeader(sheet, headers, targetRow, key, finalVal);
     }
     
     var oldVal = oldObj.adjustmentType + ':' + oldObj.amount;
     var newVal = (updates.adjustmentType || oldObj.adjustmentType) + ':' + (updates.amount !== undefined ? updates.amount : oldObj.amount);
-    
-    logDirectAudit(ss, placementId, oldObj.candidateName, 'FINANCE', 'ADJUSTMENT_UPDATED', oldObj.pipelineType + ' Adjustment updated', oldVal, newVal, performedBy);
-    
     var newPipelineType = updates.pipelineType || oldObj.pipelineType;
+    
+    var auditMsg = newPipelineType + ' Adjustment updated';
+    var confirmedAuditLog = logDirectAudit(ss, placementId, oldObj.candidateName, 'FINANCE', 'ADJUSTMENT_UPDATED', auditMsg, oldVal, newVal, performedBy);
+    
     if (newPipelineType !== oldObj.pipelineType) {
       upsertDirectFinancialLedger(ss, placementId, oldObj.candidateName, oldObj.pipelineType);
     }
-    upsertDirectFinancialLedger(ss, placementId, oldObj.candidateName, newPipelineType);
+    var updatedLedger = upsertDirectFinancialLedger(ss, placementId, oldObj.candidateName, newPipelineType);
     
     SpreadsheetApp.flush();
-    return { success: true, message: 'Adjustment updated' };
+    var finalData = sheet.getDataRange().getValues();
+    var confirmedAdjustment = directPlacementRowToObj_(finalData[targetRow - 1], getDirectPlacementHeaderMap_(sheet));
+    
+    return { 
+      success: true, 
+      message: 'Adjustment updated',
+      adjustment: confirmedAdjustment,
+      financial: updatedLedger,
+      auditLog: confirmedAuditLog
+    };
   } catch(err) {
     return { success: false, error: err.message };
   }
@@ -4043,156 +4116,165 @@ function deleteDirectAdjustment(params) {
     sheet.deleteRow(targetRow);
     
     var oldVal = oldObj.adjustmentType + ':' + oldObj.amount;
-    logDirectAudit(ss, placementId, oldObj.candidateName, 'FINANCE', 'ADJUSTMENT_DELETED', oldObj.pipelineType + ' ' + oldObj.adjustmentType + ' of Rs. ' + oldObj.amount + ' deleted', oldVal, '', performedBy);
+    var auditMsg = oldObj.pipelineType + ' ' + oldObj.adjustmentType + ' of Rs. ' + oldObj.amount + ' deleted';
+    var confirmedAuditLog = logDirectAudit(ss, placementId, oldObj.candidateName, 'FINANCE', 'ADJUSTMENT_DELETED', auditMsg, oldVal, '', performedBy);
     
-    upsertDirectFinancialLedger(ss, placementId, oldObj.candidateName, oldObj.pipelineType);
+    var updatedLedger = upsertDirectFinancialLedger(ss, placementId, oldObj.candidateName, oldObj.pipelineType);
     SpreadsheetApp.flush();
-    return { success: true, message: 'Adjustment deleted' };
+    
+    return { 
+      success: true, 
+      message: 'Adjustment deleted',
+      financial: updatedLedger,
+      auditLog: confirmedAuditLog
+    };
   } catch(err) {
     return { success: false, error: err.message };
   }
 }
 
+// Safe numeric parser
+function parseSafeDirectAmount_(val) {
+  if (val === undefined || val === null || val === '') return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  var s = String(val).replace(/[^0-9.-]/g, '');
+  var n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+// Unified Financial Calculation Engine
+function calculateDirectPlacementFinancials_(baseFee, adjustmentsArr, paymentsArr) {
+  var bFee = parseSafeDirectAmount_(baseFee);
+  
+  var totalAdjustments = 0;
+  for (var i = 0; i < adjustmentsArr.length; i++) {
+     totalAdjustments += parseSafeDirectAmount_(adjustmentsArr[i].amount);
+  }
+  
+  var paidToDate = 0;
+  for (var j = 0; j < paymentsArr.length; j++) {
+     paidToDate += parseSafeDirectAmount_(paymentsArr[j].amount);
+  }
+  
+  var netPayable = Math.max(0, bFee + totalAdjustments);
+  var pendingDues = Math.max(0, netPayable - paidToDate);
+  var overpaid = Math.max(0, paidToDate - netPayable);
+  
+  return {
+    baseFee: bFee,
+    totalAdjustments: totalAdjustments,
+    netPayable: netPayable,
+    paidToDate: paidToDate,
+    pendingDues: pendingDues,
+    overpaidAmount: overpaid
+  };
+}
+
 function upsertDirectFinancialLedger(ss, placementId, candidateName, pipelineType, explicitBaseFee) {
-  if (!placementId || !pipelineType) return;
+  if (!placementId || !pipelineType) return null;
   var pt = String(pipelineType).toLowerCase();
   
   var lCols = ['placementId', 'candidateName', 'pipelineType', 'baseFee', 'netPayable', 'paidToDate', 'pendingDues', 'overpaidAmount', 'paymentStatus', 'updatedAt'];
-  var lSheet = ss.getSheetByName(DP_FINANCIAL_LEDGER_SHEET);
-  if (!lSheet) lSheet = ss.insertSheet(DP_FINANCIAL_LEDGER_SHEET);
-  ensureDirectPlacementColumns_(lSheet, lCols);
+  var lSheet = ensureSheetWithColumns(ss, DP_FINANCIAL_LEDGER_SHEET, lCols);
   
   var lData = lSheet.getDataRange().getValues();
-  var lHeaderRowIdx = getDirectPlacementHeaderRowIndex_(lSheet);
-  var lHeaders = lData[lHeaderRowIdx].map(function(h){ return String(h).trim(); });
+  var lHeaderMap = getDirectPlacementHeaderMap_(lSheet);
+  var lHeaders = lData[getDirectPlacementHeaderRowIndex_(lSheet)].map(function(h){ return String(h).trim(); });
   
   var targetRow = -1;
   var existingBaseFee = 0;
   
-  var lIdIdx = findHeaderCol(lHeaders, 'placementId');
-  var lPtIdx = findHeaderCol(lHeaders, 'pipelineType');
-  var lBaseIdx = findHeaderCol(lHeaders, 'baseFee');
-  
-  if (lData.length > 1 && lIdIdx !== -1 && lPtIdx !== -1) {
-    for (var j = lHeaderRowIdx + 1; j < lData.length; j++) {
-      if (String(lData[j][lIdIdx]).trim() === String(placementId).trim() && String(lData[j][lPtIdx]).trim() === pt) {
+  if (lData.length > 1) {
+    for (var j = 1; j < lData.length; j++) {
+      if (getDPValue_(lData[j], lHeaderMap, 'placementId') === String(placementId).trim() && getDPValue_(lData[j], lHeaderMap, 'pipelineType').toLowerCase() === pt) {
         targetRow = j + 1;
-        if (lBaseIdx !== -1) {
-           existingBaseFee = parseFloat(lData[j][lBaseIdx]) || 0;
-        }
+        existingBaseFee = parseSafeDirectAmount_(getDPValue_(lData[j], lHeaderMap, 'baseFee'));
         break;
       }
     }
   }
   
   var hasExplicitBaseFee = explicitBaseFee !== undefined && explicitBaseFee !== null && String(explicitBaseFee).trim() !== '';
-  var finalBaseFee = hasExplicitBaseFee ? Number(explicitBaseFee) : existingBaseFee;
+  var finalBaseFee = hasExplicitBaseFee ? parseSafeDirectAmount_(explicitBaseFee) : existingBaseFee;
   
-  // Calculate payments
+  // Collect matching payments
   var pSheet = ss.getSheetByName(DP_PAYMENT_SHEET);
-  var totalValidPaid = 0;
-  var refunds = 0; // if refunds were payments
-  
+  var matchingPayments = [];
   if (pSheet) {
     var pData = pSheet.getDataRange().getValues();
-    if (pData.length > 1) {
-      var pHeaderRowIdx = getDirectPlacementHeaderRowIndex_(pSheet);
-      var pHeaders = pData[pHeaderRowIdx].map(function(h){ return String(h).trim(); });
-      var pIdIdx = findHeaderCol(pHeaders, 'placementId');
-      var amtIdx = findHeaderCol(pHeaders, 'amount');
-      var typeIdx = findHeaderCol(pHeaders, 'paymentType');
-      var ptLineIdx = findHeaderCol(pHeaders, 'pipelineType');
-      
-      for (var i = pHeaderRowIdx + 1; i < pData.length; i++) {
-        if (String(pData[i][pIdIdx]).trim() === String(placementId).trim()) {
-          var paymentPt = '';
-          if (ptLineIdx !== -1 && pData[i][ptLineIdx]) {
-            paymentPt = String(pData[i][ptLineIdx]).toLowerCase();
-          } else if (typeIdx !== -1) {
-            var rawType = String(pData[i][typeIdx]).toLowerCase();
-            if (rawType.indexOf('registration') > -1) paymentPt = 'registration';
-            else if (rawType.indexOf('course') > -1) paymentPt = 'course';
-            else if (rawType.indexOf('document') > -1) paymentPt = 'document';
-            else if (rawType.indexOf('placement') > -1) paymentPt = 'placement';
-            else paymentPt = rawType.replace(/fee/g, '').replace(/[^a-z]/g, '');
+    var pMap = getDirectPlacementHeaderMap_(pSheet);
+    for (var i = 1; i < pData.length; i++) {
+       var pId = getDPValue_(pData[i], pMap, 'placementId');
+       if (pId === String(placementId).trim()) {
+          var pPt = getDPValue_(pData[i], pMap, 'pipelineType').toLowerCase();
+          if (!pPt) {
+             var typeStr = getDPValue_(pData[i], pMap, 'paymentType').toLowerCase();
+             if (typeStr.indexOf('registration') > -1) pPt = 'registration';
+             else if (typeStr.indexOf('course') > -1) pPt = 'course';
+             else if (typeStr.indexOf('document') > -1) pPt = 'document';
+             else if (typeStr.indexOf('placement') > -1) pPt = 'placement';
+             else pPt = typeStr.replace(/fee/g, '').replace(/[^a-z]/g, '');
           }
-          if (paymentPt === pt) {
-            totalValidPaid += (parseFloat(pData[i][amtIdx]) || 0);
+          if (pPt === pt) {
+             matchingPayments.push({ amount: getDPValue_(pData[i], pMap, 'amount') });
           }
-        }
-      }
+       }
     }
   }
   
-  // Calculate adjustments
+  // Collect matching adjustments
   var aSheet = ss.getSheetByName(DP_ADJUSTMENT_SHEET);
-  var addCharges = 0, discounts = 0, waivers = 0;
-  
+  var matchingAdjustments = [];
   if (aSheet) {
     var aData = aSheet.getDataRange().getValues();
-    if (aData.length > 1) {
-      var aHeaderRowIdx = getDirectPlacementHeaderRowIndex_(aSheet);
-      var aHeaders = aData[aHeaderRowIdx].map(function(h){ return String(h).trim(); });
-      var aIdIdx = findHeaderCol(aHeaders, 'placementId');
-      var aTypeIdx = findHeaderCol(aHeaders, 'adjustmentType');
-      var aAmtIdx = findHeaderCol(aHeaders, 'amount');
-      var aPtIdx = findHeaderCol(aHeaders, 'pipelineType');
-      
-      for (var i = aHeaderRowIdx + 1; i < aData.length; i++) {
-        if (String(aData[i][aIdIdx]).trim() === String(placementId).trim()) {
-          var adjPt = '';
-          if (aPtIdx !== -1 && aData[i][aPtIdx]) {
-            adjPt = String(aData[i][aPtIdx]).toLowerCase();
+    var aMap = getDirectPlacementHeaderMap_(aSheet);
+    for (var i = 1; i < aData.length; i++) {
+       if (getDPValue_(aData[i], aMap, 'placementId') === String(placementId).trim()) {
+          if (getDPValue_(aData[i], aMap, 'pipelineType').toLowerCase() === pt) {
+             matchingAdjustments.push({ amount: getDPValue_(aData[i], aMap, 'amount') });
           }
-          if (adjPt === pt) {
-            var amt = parseFloat(aData[i][aAmtIdx]) || 0;
-            var type = String(aData[i][aTypeIdx]).toUpperCase().trim();
-            if (type === 'ADDITIONAL_CHARGE') addCharges += amt;
-            else if (type === 'DISCOUNT') discounts += amt;
-            else if (type === 'WAIVER') waivers += amt;
-            else if (type === 'REFUND') refunds += amt;
-          }
-        }
-      }
+       }
     }
   }
   
-  var reductions = discounts + waivers;
-  var netPayable = Math.max(0, finalBaseFee + addCharges - reductions);
-  var paidToDate = Math.max(0, totalValidPaid - refunds);
-  var pending = Math.max(0, netPayable - paidToDate);
-  var overpaidAmount = Math.max(0, paidToDate - netPayable);
+  var calc = calculateDirectPlacementFinancials_(finalBaseFee, matchingAdjustments, matchingPayments);
   
   var status = 'Pending';
-  if (pending === 0 && netPayable > 0) status = 'Paid';
-  else if (pending === 0 && netPayable === 0 && paidToDate > 0) status = 'Paid';
-  else if (paidToDate > 0 && pending > 0) status = 'Partial';
+  if (calc.pendingDues === 0 && calc.netPayable > 0) status = 'Paid';
+  else if (calc.pendingDues === 0 && calc.netPayable === 0 && calc.paidToDate > 0) status = 'Paid';
+  else if (calc.paidToDate > 0 && calc.pendingDues > 0) status = 'Partial';
   
   var now = new Date().toISOString();
   
   if (targetRow !== -1) {
-    setByHeader(lSheet, lHeaders, targetRow, 'baseFee', finalBaseFee);
-    setByHeader(lSheet, lHeaders, targetRow, 'netPayable', netPayable);
-    setByHeader(lSheet, lHeaders, targetRow, 'paidToDate', paidToDate);
-    setByHeader(lSheet, lHeaders, targetRow, 'pendingDues', pending);
-    setByHeader(lSheet, lHeaders, targetRow, 'overpaidAmount', overpaidAmount);
+    setByHeader(lSheet, lHeaders, targetRow, 'baseFee', calc.baseFee);
+    setByHeader(lSheet, lHeaders, targetRow, 'netPayable', calc.netPayable);
+    setByHeader(lSheet, lHeaders, targetRow, 'paidToDate', calc.paidToDate);
+    setByHeader(lSheet, lHeaders, targetRow, 'pendingDues', calc.pendingDues);
+    setByHeader(lSheet, lHeaders, targetRow, 'overpaidAmount', calc.overpaidAmount);
     setByHeader(lSheet, lHeaders, targetRow, 'paymentStatus', status);
     setByHeader(lSheet, lHeaders, targetRow, 'updatedAt', now);
   } else {
     var newRow = buildRowByHeaders(lHeaders, {
-      'placementId': placementId,
-      'candidateName': candidateName || '',
-      'pipelineType': pt,
-      'baseFee': finalBaseFee,
-      'netPayable': netPayable,
-      'paidToDate': paidToDate,
-      'pendingDues': pending,
-      'overpaidAmount': overpaidAmount,
-      'paymentStatus': status,
-      'updatedAt': now
+      placementId: placementId,
+      candidateName: candidateName,
+      pipelineType: pipelineType,
+      baseFee: calc.baseFee,
+      netPayable: calc.netPayable,
+      paidToDate: calc.paidToDate,
+      pendingDues: calc.pendingDues,
+      overpaidAmount: calc.overpaidAmount,
+      paymentStatus: status,
+      updatedAt: now
     });
     lSheet.appendRow(newRow);
+    targetRow = lSheet.getLastRow();
   }
+  
+  SpreadsheetApp.flush();
+  
+  var finalLData = lSheet.getDataRange().getValues();
+  return directPlacementRowToObj_(finalLData[targetRow - 1], lHeaderMap);
 }
 
 function updateDirectFinancialLedger(params) {

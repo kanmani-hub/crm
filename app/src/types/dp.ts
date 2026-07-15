@@ -35,6 +35,7 @@ export interface DPFinancialPipeline {
   netPayable?: number;
   pendingDues?: number;
   overpaidAmount?: number;
+  paymentStatus?: 'Pending' | 'Partial' | 'Paid';
 }
 
 export interface DPCandidate {

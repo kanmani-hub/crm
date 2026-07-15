@@ -43,6 +43,8 @@ export default function CandidateProfile() {
     loadPaymentsForCandidate,
     loadAuditLogs,
     isFetchingData,
+    setPendingDocumentUpdate,
+    clearPendingDocumentUpdate,
   } = useStore();
   const candidate = id ? getCandidateById(id) : undefined;
 
@@ -173,29 +175,46 @@ export default function CandidateProfile() {
   const handleToggleDocReceived = async (key: keyof DocumentStatus) => {
     if (!candidate || !localDocsReceived) return;
     
-    // 1. Capture previous state and increment mutation version
+    // 1. Capture previous state and calculate complete new document object
     const previousState = localDocsReceived[key];
     const newState = !previousState;
+    const nextDocumentsReceived = { ...candidate.documentsReceived, [key]: newState };
     const versionKey = `recv_${key}`;
     const currentVersion = (pendingDocsRef.current[versionKey] || 0) + 1;
     pendingDocsRef.current[versionKey] = currentVersion;
 
-    // 2. Immediately update local React state for instantaneous UI response
-    setLocalDocsReceived(prev => prev ? { ...prev, [key]: newState } : null);
+    // 2. Register pending update globally BEFORE backend API call
+    setPendingDocumentUpdate(candidate.id, 'documentsReceived', nextDocumentsReceived);
+
+    // 3. Immediately update local React state for instantaneous UI response
+    setLocalDocsReceived(nextDocumentsReceived);
     
-    // Also update global Zustand store (fire-and-forget for other components)
+    // Also update global Zustand store directly to maintain consistency
     updateCandidate(candidate.id, {
-      documentsReceived: { ...candidate.documentsReceived, [key]: newState },
+      documentsReceived: nextDocumentsReceived,
     });
 
     try {
       // 4. Await backend API directly to guarantee it completes
-      await sheetsApi.updateCandidate(candidate.id, {
-        documentsReceived: { ...candidate.documentsReceived, [key]: newState },
+      const response = await sheetsApi.updateCandidate(candidate.id, {
+        documentsReceived: nextDocumentsReceived,
       });
       
-      // If version hasn't changed (no rapid re-clicks), remove the pending lock
+      // If version hasn't changed (no rapid re-clicks), handle clearing
       if (pendingDocsRef.current[versionKey] === currentVersion) {
+        // Compare the backend-confirmed document state against the optimistic pending state
+        if (response?.candidate?.documentsReceived) {
+           let backendDocsStr = typeof response.candidate.documentsReceived === 'string' ? response.candidate.documentsReceived : JSON.stringify(response.candidate.documentsReceived);
+           let expectedStr = JSON.stringify(nextDocumentsReceived);
+           // Very loose verification for safety
+           if (backendDocsStr.includes(String(newState))) {
+             clearPendingDocumentUpdate(candidate.id, 'documentsReceived');
+           } else {
+             console.warn('Backend confirmation mismatch, keeping lock for next poll to fix');
+           }
+        } else {
+           clearPendingDocumentUpdate(candidate.id, 'documentsReceived');
+        }
         delete pendingDocsRef.current[versionKey];
       }
     } catch (error) {
@@ -204,10 +223,10 @@ export default function CandidateProfile() {
       
       // Rollback only if we are still the active mutation
       if (pendingDocsRef.current[versionKey] === currentVersion) {
-        setLocalDocsReceived(prev => prev ? { ...prev, [key]: previousState } : null);
-        updateCandidate(candidate.id, {
-          documentsReceived: { ...candidate.documentsReceived, [key]: previousState },
-        });
+        const revertDocsReceived = { ...candidate.documentsReceived, [key]: previousState };
+        setLocalDocsReceived(revertDocsReceived);
+        updateCandidate(candidate.id, { documentsReceived: revertDocsReceived });
+        clearPendingDocumentUpdate(candidate.id, 'documentsReceived');
         delete pendingDocsRef.current[versionKey];
       }
     }
@@ -218,22 +237,32 @@ export default function CandidateProfile() {
     
     const previousState = localDocsApplied[key];
     const newState = !previousState;
+    const nextDocumentsApplied = { ...candidate.documentsApplied, [key]: newState };
     const versionKey = `apply_${key}`;
     const currentVersion = (pendingDocsRef.current[versionKey] || 0) + 1;
     pendingDocsRef.current[versionKey] = currentVersion;
 
-    setLocalDocsApplied(prev => prev ? { ...prev, [key]: newState } : null);
+    setPendingDocumentUpdate(candidate.id, 'documentsApplied', nextDocumentsApplied);
+    setLocalDocsApplied(nextDocumentsApplied);
     
     updateCandidate(candidate.id, {
-      documentsApplied: { ...candidate.documentsApplied, [key]: newState },
+      documentsApplied: nextDocumentsApplied,
     });
 
     try {
-      await sheetsApi.updateCandidate(candidate.id, {
-        documentsApplied: { ...candidate.documentsApplied, [key]: newState },
+      const response = await sheetsApi.updateCandidate(candidate.id, {
+        documentsApplied: nextDocumentsApplied,
       });
       
       if (pendingDocsRef.current[versionKey] === currentVersion) {
+        if (response?.candidate?.documentsApplied) {
+           let backendDocsStr = typeof response.candidate.documentsApplied === 'string' ? response.candidate.documentsApplied : JSON.stringify(response.candidate.documentsApplied);
+           if (backendDocsStr.includes(String(newState))) {
+             clearPendingDocumentUpdate(candidate.id, 'documentsApplied');
+           }
+        } else {
+           clearPendingDocumentUpdate(candidate.id, 'documentsApplied');
+        }
         delete pendingDocsRef.current[versionKey];
       }
     } catch (error) {
@@ -241,10 +270,10 @@ export default function CandidateProfile() {
       showToast('Failed to update document', 'error');
       
       if (pendingDocsRef.current[versionKey] === currentVersion) {
-        setLocalDocsApplied(prev => prev ? { ...prev, [key]: previousState } : null);
-        updateCandidate(candidate.id, {
-          documentsApplied: { ...candidate.documentsApplied, [key]: previousState },
-        });
+        const revertDocsApplied = { ...candidate.documentsApplied, [key]: previousState };
+        setLocalDocsApplied(revertDocsApplied);
+        updateCandidate(candidate.id, { documentsApplied: revertDocsApplied });
+        clearPendingDocumentUpdate(candidate.id, 'documentsApplied');
         delete pendingDocsRef.current[versionKey];
       }
     }

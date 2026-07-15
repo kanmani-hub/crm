@@ -38,6 +38,7 @@ interface AppState {
     payments: Record<string, number>;
     auditLogs: number | null;
   };
+  pendingDocumentUpdates: Record<string, { documentsReceived?: import('@/types').DocumentStatus, documentsApplied?: import('@/types').DocumentStatus }>;
 
   // Actions
   setSearchQuery: (q: string) => void;
@@ -55,6 +56,8 @@ interface AppState {
   addTrackedCandidate: (tc: TrackedCandidate) => void;
   updateTrackedStatus: (candidateId: string, status: TrackedCandidate['status']) => void;
   updateCandidate: (id: string, updates: Partial<Candidate>) => void;
+  setPendingDocumentUpdate: (candidateId: string, type: 'documentsReceived' | 'documentsApplied', data: import('@/types').DocumentStatus) => void;
+  clearPendingDocumentUpdate: (candidateId: string, type: 'documentsReceived' | 'documentsApplied') => void;
   updateFinancialPipeline: (candidateId: string, pipelineType: PipelineType, updates: Partial<Candidate['financials'][0]>) => void;
   updateSettings: (settings: AppSettings) => void;
   addPaymentRecord: (payment: PaymentRecord) => Promise<{ success: boolean; error?: string }>;
@@ -129,7 +132,13 @@ const loadSavedSettings = (): AppSettings => {
 // Converts a raw GAS row object (all strings) into a typed Candidate.
 // ─────────────────────────────────────────────────────────────
 function mapGasRowToCandidate(rawRow: Record<string, string>): Candidate {
-  const toBool = (v: string) => String(v).toLowerCase() === 'true';
+  const toBool = (val: any): boolean => {
+    if (typeof val === 'boolean') return val;
+    if (typeof val === 'number') return val === 1;
+    if (!val) return false;
+    const s = String(val).trim().toLowerCase();
+    return s === 'true' || s === '1';
+  };
 
   // Normalize all keys to lowercase with no spaces to handle unpredictable sheet headers
   const row: Record<string, string> = {};
@@ -207,6 +216,7 @@ export const useStore = create<AppState>((set, get) => ({
   auditLogs: [],
   paymentRecords: [],
   activeProfileId: null,
+  pendingDocumentUpdates: {},
   searchQuery: '',
   activeFilters: [],
   branchFilter: 'all',
@@ -306,6 +316,17 @@ export const useStore = create<AppState>((set, get) => ({
             } else if (oldC) {
               // Never wipe existing financials if response omits them
               mapped.financials = oldC.financials;
+            }
+            
+            // Apply pending document updates
+            const pendingUpdates = get().pendingDocumentUpdates[mapped.id];
+            if (pendingUpdates) {
+              if (pendingUpdates.documentsReceived) {
+                mapped.documentsReceived = { ...mapped.documentsReceived, ...pendingUpdates.documentsReceived };
+              }
+              if (pendingUpdates.documentsApplied) {
+                mapped.documentsApplied = { ...mapped.documentsApplied, ...pendingUpdates.documentsApplied };
+              }
             }
             
             return mapped;
@@ -506,6 +527,28 @@ export const useStore = create<AppState>((set, get) => ({
       // Optional: Add a toast mechanism here to alert the user of save failure
     });
   },
+
+  setPendingDocumentUpdate: (candidateId, type, data) => set((s) => ({
+    pendingDocumentUpdates: {
+      ...s.pendingDocumentUpdates,
+      [candidateId]: {
+        ...s.pendingDocumentUpdates[candidateId],
+        [type]: data
+      }
+    }
+  })),
+
+  clearPendingDocumentUpdate: (candidateId, type) => set((s) => {
+    const nextUpdates = { ...s.pendingDocumentUpdates };
+    if (nextUpdates[candidateId]) {
+      nextUpdates[candidateId] = { ...nextUpdates[candidateId] };
+      delete nextUpdates[candidateId][type];
+      if (Object.keys(nextUpdates[candidateId]).length === 0) {
+        delete nextUpdates[candidateId];
+      }
+    }
+    return { pendingDocumentUpdates: nextUpdates };
+  }),
   updateFinancialPipeline: (candidateId, pipelineType, updates) => {
     // 1. Optimistic Update (UI)
     set((s) => ({
@@ -722,8 +765,64 @@ export const useStore = create<AppState>((set, get) => ({
           if (act.includes('bgv')) logType = 'bgv';
           
           let desc = row.actionType;
+          
+          const isJson = (str: string) => {
+            try { JSON.parse(str); return true; } catch { return false; }
+          };
+
           if (row.oldValue && row.newValue) {
-            desc += ` ${row.oldValue} → ${row.newValue}`;
+            if (isJson(row.oldValue) && isJson(row.newValue)) {
+              try {
+                const oldObj = JSON.parse(row.oldValue);
+                const newObj = JSON.parse(row.newValue);
+                let changedKey = '';
+                let oldVal = false;
+                let newVal = false;
+                for (const k in newObj) {
+                  if (String(oldObj[k]) !== String(newObj[k])) {
+                    changedKey = k;
+                    oldVal = oldObj[k] === true || String(oldObj[k]).toLowerCase() === 'true';
+                    newVal = newObj[k] === true || String(newObj[k]).toLowerCase() === 'true';
+                    break;
+                  }
+                }
+                
+                if (changedKey) {
+                  const labelMap: Record<string, string> = {
+                    offerLetter: 'Offer Letter',
+                    appraisals: 'Appraisals',
+                    payslips: 'Payslips',
+                    relievingLetter: 'Relieving Letter',
+                    counterOffer: 'Counter Offer'
+                  };
+                  const label = labelMap[changedKey] || changedKey;
+                  
+                  let actionWord = '';
+                  const lowerAction = (row.actionType || '').toLowerCase();
+                  if (lowerAction.includes('received')) {
+                    actionWord = 'Received';
+                  } else if (lowerAction.includes('applied')) {
+                    actionWord = 'Applied';
+                  } else {
+                    actionWord = 'Document'; // Fallback for historical 'Candidate Updated'
+                  }
+                  
+                  if (newVal === true) {
+                    desc = `${label} ${actionWord}`;
+                    if (actionWord === 'Document') desc = `${label} Document Updated`;
+                  } else {
+                    desc = `${label} ${actionWord} Removed`;
+                    if (actionWord === 'Document') desc = `${label} Document Removed`;
+                  }
+                } else {
+                  desc += ` ${row.oldValue} → ${row.newValue}`;
+                }
+              } catch {
+                desc += ` ${row.oldValue} → ${row.newValue}`;
+              }
+            } else {
+              desc += ` ${row.oldValue} → ${row.newValue}`;
+            }
           } else if (row.newValue) {
             desc += ` ${row.newValue}`;
           }

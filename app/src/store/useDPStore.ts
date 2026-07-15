@@ -65,6 +65,8 @@ interface DPState {
   syncStatus: 'idle' | 'syncing' | 'success' | 'error';
   dashboardMetrics: DPDashboardMetrics | null;
   
+  pendingDirectMutations: Record<string, boolean>; // by placementId
+  
   adjustmentsByPlacementId: Record<string, DPAdjustment[]>;
   loadDirectAdjustments: (placementId: string, force?: boolean) => Promise<void>;
   addDirectAdjustment: (payload: Record<string, any>) => Promise<{ success: boolean; error?: string }>;
@@ -97,6 +99,7 @@ interface DPState {
   updatePaymentRecord: (paymentId: string, updates: Partial<DPPaymentRecord>) => Promise<{ success: boolean; error?: string }>;
   deletePaymentRecord: (paymentId: string) => Promise<{ success: boolean; error?: string }>;
   updateFinancialPipeline: (candidateId: string, pipelineType: string, updates: Partial<DPFinancialPipeline>) => void;
+  recalculateDirectFinancialsLocally: (placementId: string, pipelineType: string) => void;
   
   toggleDocumentStatus: (placementId: string, documentType: DPDocumentType, status: boolean, performedBy: string) => Promise<void>;
   uploadDocument: (placementId: string, documentType: DPDocumentType, file: File, performedBy: string) => Promise<void>;
@@ -173,6 +176,7 @@ export const useDPStore = create<DPState>((set, get) => ({
   auditLogs: [],
   paymentRecords: [],
   activeProfileId: null,
+  pendingDirectMutations: {},
   searchQuery: '',
   statusFilter: '',
   bgvFilter: '',
@@ -245,10 +249,11 @@ export const useDPStore = create<DPState>((set, get) => ({
           }
           
           const incomingHasFinancialData = hasLoadedDPFinancialData(newC.financials);
+          const hasPendingMutation = get().pendingDirectMutations[newC.placementId];
 
           return {
             ...newC,
-            financials: incomingHasFinancialData ? newC.financials : existing.financials // Overwrite with incoming only if real
+            financials: (incomingHasFinancialData && !hasPendingMutation) ? newC.financials : existing.financials
           };
         });
 
@@ -307,79 +312,274 @@ export const useDPStore = create<DPState>((set, get) => ({
   },
 
   addDirectAdjustment: async (payload) => {
+    const tempId = `adj_temp_${Date.now()}`;
+    const auditTempId = `audit_temp_adj_${Date.now()}`;
+    
     try {
+      // 1. Optimistic Audit Log
       const optimisticLog = {
-        id: `audit_temp_adj_${Date.now()}`,
+        id: auditTempId,
         placementId: payload.placementId,
         candidateName: payload.candidateName || 'Unknown',
         moduleName: 'FINANCE',
         actionType: 'ADJUSTMENT_ADDED',
-        description: `Adjustment Added: Rs.${payload.amount} (${payload.adjustmentType || 'DISCOUNT'})`,
+        description: `${payload.pipelineType || ''} ${payload.adjustmentType || 'DISCOUNT'} of Rs. ${payload.amount} added`,
         oldValue: '',
+        newValue: `${payload.adjustmentType}:${payload.amount}`,
+        userStamp: payload.userStamp || 'Python HR',
+        timestamp: new Date().toISOString()
+      } as unknown as DPAuditLogEntry;
+
+      // 2. Set Pending Mutation Lock & Update Store
+      set((s) => ({
+        pendingDirectMutations: { ...s.pendingDirectMutations, [payload.placementId]: true },
+        auditLogs: [optimisticLog, ...s.auditLogs],
+        adjustmentsByPlacementId: {
+          ...s.adjustmentsByPlacementId,
+          [payload.placementId]: [
+            ...(s.adjustmentsByPlacementId[payload.placementId] || []),
+            { ...payload, amount: String(payload.amount), adjustmentId: tempId }
+          ]
+        }
+      }));
+      
+      // 3. Immediately recalculate candidate financials locally
+      const { recalculateDirectFinancialsLocally } = get() as any;
+      if (recalculateDirectFinancialsLocally) recalculateDirectFinancialsLocally(payload.placementId, payload.pipelineType);
+
+      // 4. Call Backend
+      const apiPayload = { ...payload, clientMutationId: tempId };
+      const res = await dpSheetsApi.addDirectAdjustment(apiPayload);
+      
+      if (res && res.success) {
+        // 5. Replace temp adjustment with confirmed adjustment
+        set((s) => {
+          const adjs = s.adjustmentsByPlacementId[payload.placementId] || [];
+          return {
+            adjustmentsByPlacementId: {
+              ...s.adjustmentsByPlacementId,
+              [payload.placementId]: adjs.map(a => a.adjustmentId === tempId ? res.adjustment : a)
+            }
+          };
+        });
+        
+        // 6. Update ledger directly with confirmed financial data
+        if (res.financial) {
+           set((s) => ({
+             candidates: s.candidates.map(c => {
+               if (c.placementId !== payload.placementId) return c;
+               const newFins = [...c.financials];
+               const fIdx = newFins.findIndex(f => f.pipelineType.toLowerCase() === payload.pipelineType.toLowerCase());
+               if (fIdx > -1) {
+                 newFins[fIdx] = { ...newFins[fIdx], ...res.financial };
+               }
+               return { ...c, financials: newFins };
+             })
+           }));
+        }
+        
+        // 7. Replace temp audit log with confirmed log
+        if (res.auditLog) {
+           set((s) => ({
+             auditLogs: s.auditLogs.map(l => l.id === auditTempId ? res.auditLog : l)
+           }));
+        }
+        
+        // 8. Clear Pending Lock
+        set((s) => {
+           const next = { ...s.pendingDirectMutations };
+           delete next[payload.placementId];
+           return { pendingDirectMutations: next };
+        });
+        
+        // Background refresh dashboard
+        get().refreshDashboard(true).catch(console.error);
+        return { success: true };
+      }
+      throw new Error(res.error || 'Failed to add adjustment');
+    } catch (err: any) {
+      // Rollback
+      set((s) => {
+        const next = { ...s.pendingDirectMutations };
+        delete next[payload.placementId];
+        return {
+          pendingDirectMutations: next,
+          auditLogs: s.auditLogs.filter(l => l.id !== auditTempId),
+          adjustmentsByPlacementId: {
+            ...s.adjustmentsByPlacementId,
+            [payload.placementId]: (s.adjustmentsByPlacementId[payload.placementId] || []).filter(a => a.adjustmentId !== tempId)
+          }
+        };
+      });
+      const { recalculateDirectFinancialsLocally } = get() as any;
+      if (recalculateDirectFinancialsLocally) recalculateDirectFinancialsLocally(payload.placementId, payload.pipelineType);
+      
+      throw err;
+    }
+  },
+
+  updateDirectAdjustment: async (payload) => {
+    const auditTempId = `audit_temp_adj_upd_${Date.now()}`;
+    const updates = payload.updates || {};
+    
+    try {
+      const existingAdjs = get().adjustmentsByPlacementId[payload.placementId] || [];
+      const oldAdj = existingAdjs.find(a => a.adjustmentId === payload.adjustmentId);
+      if (!oldAdj) throw new Error("Adjustment not found locally");
+      
+      const nextAdj = { ...oldAdj, ...updates };
+
+      const optimisticLog = {
+        id: auditTempId,
+        placementId: payload.placementId,
+        candidateName: oldAdj.candidateName || 'Unknown',
+        moduleName: 'FINANCE',
+        actionType: 'ADJUSTMENT_UPDATED',
+        description: `${nextAdj.pipelineType || ''} Adjustment updated`,
+        oldValue: `${oldAdj.adjustmentType}:${oldAdj.amount}`,
+        newValue: `${nextAdj.adjustmentType}:${nextAdj.amount}`,
+        userStamp: payload.userStamp || 'Python HR',
+        timestamp: new Date().toISOString()
+      } as unknown as DPAuditLogEntry;
+
+      set((s) => ({
+        pendingDirectMutations: { ...s.pendingDirectMutations, [payload.placementId]: true },
+        auditLogs: [optimisticLog, ...s.auditLogs],
+        adjustmentsByPlacementId: {
+          ...s.adjustmentsByPlacementId,
+          [payload.placementId]: existingAdjs.map(a => a.adjustmentId === payload.adjustmentId ? nextAdj : a)
+        }
+      }));
+      
+      const { recalculateDirectFinancialsLocally } = get() as any;
+      if (recalculateDirectFinancialsLocally) recalculateDirectFinancialsLocally(payload.placementId, nextAdj.pipelineType);
+
+      const res = await dpSheetsApi.updateDirectAdjustment(payload);
+      if (res.success) {
+        set((s) => {
+          const adjs = s.adjustmentsByPlacementId[payload.placementId] || [];
+          return {
+            adjustmentsByPlacementId: {
+              ...s.adjustmentsByPlacementId,
+              [payload.placementId]: adjs.map(a => a.adjustmentId === payload.adjustmentId ? res.adjustment : a)
+            }
+          };
+        });
+        
+        if (res.financial) {
+           set((s) => ({
+             candidates: s.candidates.map(c => {
+               if (c.placementId !== payload.placementId) return c;
+               const newFins = [...c.financials];
+               const fIdx = newFins.findIndex(f => f.pipelineType.toLowerCase() === res.financial.pipelineType.toLowerCase());
+               if (fIdx > -1) newFins[fIdx] = { ...newFins[fIdx], ...res.financial };
+               return { ...c, financials: newFins };
+             })
+           }));
+        }
+        
+        if (res.auditLog) {
+           set((s) => ({
+             auditLogs: s.auditLogs.map(l => l.id === auditTempId ? res.auditLog : l)
+           }));
+        }
+        
+        set((s) => {
+           const next = { ...s.pendingDirectMutations };
+           delete next[payload.placementId];
+           return { pendingDirectMutations: next };
+        });
+        
+        get().refreshDashboard(true).catch(console.error);
+        return { success: true };
+      }
+      throw new Error(res.error || 'Failed to update adjustment');
+    } catch (err: any) {
+      // Minimal rollback for updates would just reload
+      await get().loadDirectAdjustments(payload.placementId);
+      const { recalculateDirectFinancialsLocally } = get() as any;
+      if (recalculateDirectFinancialsLocally) recalculateDirectFinancialsLocally(payload.placementId, payload.updates?.pipelineType || '');
+      set((s) => {
+         const next = { ...s.pendingDirectMutations };
+         delete next[payload.placementId];
+         return { pendingDirectMutations: next, auditLogs: s.auditLogs.filter(l => l.id !== auditTempId) };
+      });
+      return { success: false, error: err.message };
+    }
+  },
+
+  deleteDirectAdjustment: async (payload) => {
+    const auditTempId = `audit_temp_adj_del_${Date.now()}`;
+    
+    try {
+      const existingAdjs = get().adjustmentsByPlacementId[payload.placementId] || [];
+      const oldAdj = existingAdjs.find(a => a.adjustmentId === payload.adjustmentId);
+      if (!oldAdj) throw new Error("Adjustment not found locally");
+
+      const optimisticLog = {
+        id: auditTempId,
+        placementId: payload.placementId,
+        candidateName: oldAdj.candidateName || 'Unknown',
+        moduleName: 'FINANCE',
+        actionType: 'ADJUSTMENT_DELETED',
+        description: `${oldAdj.pipelineType || ''} ${oldAdj.adjustmentType || ''} of Rs. ${oldAdj.amount} deleted`,
+        oldValue: `${oldAdj.adjustmentType}:${oldAdj.amount}`,
         newValue: '',
         userStamp: payload.userStamp || 'Python HR',
         timestamp: new Date().toISOString()
       } as unknown as DPAuditLogEntry;
 
       set((s) => ({
+        pendingDirectMutations: { ...s.pendingDirectMutations, [payload.placementId]: true },
         auditLogs: [optimisticLog, ...s.auditLogs],
         adjustmentsByPlacementId: {
           ...s.adjustmentsByPlacementId,
-          [payload.placementId]: [
-            ...(s.adjustmentsByPlacementId[payload.placementId] || []),
-            { ...payload, id: `adj_temp_${Date.now()}` }
-          ]
+          [payload.placementId]: existingAdjs.filter(a => a.adjustmentId !== payload.adjustmentId)
         }
       }));
+      
+      const { recalculateDirectFinancialsLocally } = get() as any;
+      if (recalculateDirectFinancialsLocally) recalculateDirectFinancialsLocally(payload.placementId, oldAdj.pipelineType);
 
-      const res = await dpSheetsApi.addDirectAdjustment(payload);
-      if (res && res.success) {
-        await get().loadDirectAdjustments(payload.placementId);
-        await get().loadPaymentsForCandidate(payload.placementId);
+      const res = await dpSheetsApi.deleteDirectAdjustment(payload);
+      if (res.success) {
+        if (res.financial) {
+           set((s) => ({
+             candidates: s.candidates.map(c => {
+               if (c.placementId !== payload.placementId) return c;
+               const newFins = [...c.financials];
+               const fIdx = newFins.findIndex(f => f.pipelineType.toLowerCase() === res.financial.pipelineType.toLowerCase());
+               if (fIdx > -1) newFins[fIdx] = { ...newFins[fIdx], ...res.financial };
+               return { ...c, financials: newFins };
+             })
+           }));
+        }
+        
+        if (res.auditLog) {
+           set((s) => ({
+             auditLogs: s.auditLogs.map(l => l.id === auditTempId ? res.auditLog : l)
+           }));
+        }
+        
+        set((s) => {
+           const next = { ...s.pendingDirectMutations };
+           delete next[payload.placementId];
+           return { pendingDirectMutations: next };
+        });
         
         get().refreshDashboard(true).catch(console.error);
         return { success: true };
       }
-      throw new Error(res.error || 'Failed to add adjustment');
+      throw new Error(res.error || 'Failed to delete adjustment');
     } catch (err: any) {
-      throw err;
-    }
-  },
-
-  updateDirectAdjustment: async (payload) => {
-    try {
-      const res = await dpSheetsApi.updateDirectAdjustment(payload);
-      if (res.success) {
-        await Promise.all([
-          get().loadDirectAdjustments(payload.placementId),
-          get().loadPaymentsForCandidate(payload.placementId),
-          get().fetchInitialData(true, true),
-          get().loadAuditLogs(payload.placementId),
-          get().refreshDashboard(true)
-        ]);
-        return { success: true };
-      }
-      return { success: false, error: res.error };
-    } catch (err: any) {
-      return { success: false, error: err.message };
-    }
-  },
-
-  deleteDirectAdjustment: async (payload) => {
-    try {
-      const res = await dpSheetsApi.deleteDirectAdjustment(payload);
-      if (res.success) {
-        await Promise.all([
-          get().loadDirectAdjustments(payload.placementId),
-          get().loadPaymentsForCandidate(payload.placementId),
-          get().fetchInitialData(true, true),
-          get().loadAuditLogs(payload.placementId),
-          get().refreshDashboard(true)
-        ]);
-        return { success: true };
-      }
-      return { success: false, error: res.error };
-    } catch (err: any) {
+      await get().loadDirectAdjustments(payload.placementId);
+      const { recalculateDirectFinancialsLocally } = get() as any;
+      if (recalculateDirectFinancialsLocally) recalculateDirectFinancialsLocally(payload.placementId, '');
+      set((s) => {
+         const next = { ...s.pendingDirectMutations };
+         delete next[payload.placementId];
+         return { pendingDirectMutations: next, auditLogs: s.auditLogs.filter(l => l.id !== auditTempId) };
+      });
       return { success: false, error: err.message };
     }
   },
@@ -539,17 +739,11 @@ export const useDPStore = create<DPState>((set, get) => ({
     set((s) => ({
       paymentRecords: [payment, ...s.paymentRecords],
       auditLogs: [optimisticLog, ...s.auditLogs],
-      candidates: s.candidates.map((c) => {
-        if (c.placementId !== payment.placementId) return c;
-        return {
-          ...c,
-          financials: c.financials.map((f) => {
-            if (f.pipelineType !== pipelineKey) return f;
-            return { ...f, paidToDate: f.paidToDate + payment.amount };
-          }),
-        };
-      }),
     }));
+    
+    // Use the unified engine
+    const { recalculateDirectFinancialsLocally } = get() as any;
+    if (recalculateDirectFinancialsLocally) recalculateDirectFinancialsLocally(payment.placementId, pipelineKey);
 
     // Perform API calls in the background without awaiting them here
     dpSheetsApi.addPayment({
@@ -597,24 +791,18 @@ export const useDPStore = create<DPState>((set, get) => ({
     set((s) => {
       const updatedPayment = { ...existing, ...updates, pipelineType: newPipelineType };
       return {
-        candidates: s.candidates.map((c) => {
-          if (c.placementId !== existing.placementId) return c;
-          return {
-            ...c,
-            financials: c.financials.map((f) => {
-              if (f.pipelineType === oldPipelineType) {
-                return { ...f, paidToDate: Math.max(0, f.paidToDate - oldAmount) };
-              }
-              if (f.pipelineType === newPipelineType) {
-                return { ...f, paidToDate: f.paidToDate + newAmount };
-              }
-              return f;
-            }),
-          };
-        }),
         paymentRecords: s.paymentRecords.map(p => p.id === paymentId ? updatedPayment : p),
       };
     });
+    
+    // Use the unified engine
+    const { recalculateDirectFinancialsLocally } = get() as any;
+    if (recalculateDirectFinancialsLocally) {
+       recalculateDirectFinancialsLocally(existing.placementId, oldPipelineType);
+       if (newPipelineType !== oldPipelineType) {
+          recalculateDirectFinancialsLocally(existing.placementId, newPipelineType);
+       }
+    }
 
     // Perform API calls in the background without awaiting them here
     dpSheetsApi.updatePayment(paymentId, {
@@ -652,18 +840,12 @@ export const useDPStore = create<DPState>((set, get) => ({
 
     // Optimistic removal
     set((s) => ({
-      paymentRecords: s.paymentRecords.filter(p => p.id !== paymentId),
-      candidates: s.candidates.map((c) => {
-        if (c.placementId !== existing.placementId) return c;
-        return {
-          ...c,
-          financials: c.financials.map((f) => {
-            if (f.pipelineType !== pipelineKey) return f;
-            return { ...f, paidToDate: Math.max(0, f.paidToDate - existing.amount) };
-          }),
-        };
-      }),
+      paymentRecords: s.paymentRecords.filter(p => p.id !== paymentId)
     }));
+    
+    // Use the unified engine
+    const { recalculateDirectFinancialsLocally } = get() as any;
+    if (recalculateDirectFinancialsLocally) recalculateDirectFinancialsLocally(existing.placementId, pipelineKey);
 
     try {
       await dpSheetsApi.deletePayment(paymentId);
@@ -682,30 +864,81 @@ export const useDPStore = create<DPState>((set, get) => ({
   //  UPDATE FINANCIAL PIPELINE (base fee, adjustments)
   // ══════════════════════════════════════════════════════
   updateFinancialPipeline: (candidateId, pipelineType, updates) => {
-    // Optimistic local update
     set((s) => ({
       candidates: s.candidates.map((c) => {
         if (c.placementId !== candidateId) return c;
-        return {
-          ...c,
-          financials: c.financials.map((f) =>
-            f.pipelineType === pipelineType ? { ...f, ...updates } : f
-          ),
-        };
+        const newFinancials = c.financials.map((f) =>
+          f.pipelineType === pipelineType ? { ...f, ...updates } : f
+        );
+        return { ...c, financials: newFinancials };
       }),
     }));
+  },
 
-    // Persist to backend
-    const candidate = get().candidates.find(c => c.placementId === candidateId);
-    const pipeline = candidate?.financials.find(f => f.pipelineType === pipelineType);
-    if (!pipeline) return;
-
-    dpSheetsApi.updateFinancialLedger(candidateId, {
-      pipelineType,
-      baseFee: pipeline.baseFee,
-      adjustments: JSON.stringify(pipeline.adjustments),
-    }).catch(err => {
-      console.error('[dpStore] Failed to save financial pipeline:', err);
+  recalculateDirectFinancialsLocally: (placementId, pipelineType) => {
+    if (!placementId) return;
+    
+    set((s) => {
+      const candidateIndex = s.candidates.findIndex(c => c.placementId === placementId);
+      if (candidateIndex === -1) return s;
+      
+      const candidate = s.candidates[candidateIndex];
+      const newFins = [...candidate.financials];
+      
+      // Calculate across all pipelines if not provided, else just the one
+      const pipelinesToUpdate = pipelineType ? [pipelineType] : newFins.map(f => f.pipelineType);
+      
+      pipelinesToUpdate.forEach(pt => {
+         const fIdx = newFins.findIndex(f => f.pipelineType.toLowerCase() === pt.toLowerCase());
+         if (fIdx === -1) return;
+         
+         const baseFee = parseFloat(String(newFins[fIdx].baseFee)) || 0;
+         
+         // 1. Calculate Adjustments
+         const adjs = (s.adjustmentsByPlacementId[placementId] || []).filter(a => (a.pipelineType || '').toLowerCase() === pt.toLowerCase());
+         let totalAdjustments = 0;
+         adjs.forEach(a => {
+            let amt = parseFloat(String(a.amount)) || 0;
+            const uType = String(a.adjustmentType).toUpperCase().trim();
+            if (uType === 'DISCOUNT' || uType === 'WAIVER' || uType === 'REFUND' || uType === 'REDUCTION') {
+              amt = -Math.abs(amt);
+            } else {
+              amt = Math.abs(amt);
+            }
+            totalAdjustments += amt;
+         });
+         
+         // 2. Calculate Payments
+         const payments = (s.paymentRecords || []).filter(p => p.placementId === placementId && (p.pipelineType || '').toLowerCase() === pt.toLowerCase());
+         let paidToDate = 0;
+         payments.forEach(p => {
+            paidToDate += (parseFloat(String(p.amount)) || 0);
+         });
+         
+         // 3. Math
+         const netPayable = Math.max(0, baseFee + totalAdjustments);
+         const pendingDues = Math.max(0, netPayable - paidToDate);
+         const overpaidAmount = Math.max(0, paidToDate - netPayable);
+         
+         let status = 'Pending';
+         if (pendingDues === 0 && netPayable > 0) status = 'Paid';
+         else if (pendingDues === 0 && netPayable === 0 && paidToDate > 0) status = 'Paid';
+         else if (paidToDate > 0 && pendingDues > 0) status = 'Partial';
+         
+         newFins[fIdx] = {
+           ...newFins[fIdx],
+           baseFee,
+           netPayable,
+           paidToDate,
+           pendingDues,
+           overpaidAmount,
+           paymentStatus: status as any
+         };
+      });
+      
+      const newCands = [...s.candidates];
+      newCands[candidateIndex] = { ...candidate, financials: newFins };
+      return { candidates: newCands };
     });
   },
 

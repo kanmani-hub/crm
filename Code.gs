@@ -7,13 +7,13 @@
  * Master_Candidates: candidateId, FullName, email, phone, batchName, dateOfBirth, address, branch, course, dateOfJoining, currentStatus, bgvStatus, placed, placedCompany, trackedStatus, trackedAt, createdAt, updatedAt
  */
 
-var FORM_SOURCE_SHEET = 'Form responses 1';
+var FORM_SOURCE_SHEET = 'new_joine';
 var REGISTRATION_SHEET = 'Registration_Responses';
 var MASTER_SHEET_NAME = 'Master_Candidates';
 var PAYMENT_RECORDS_SHEET = 'Payment_Records';
 var FINANCIAL_LEDGER_SHEET = 'Financial_Ledger';
 var SYSTEM_AUDIT_LOGS_SHEET = 'System_Audit_Logs';
-var BGV_RESPONSES_SHEET = 'BGV_Responses';
+var BGV_RESPONSES_SHEET = 'new_joine_bgv';
 
 // Direct Placement Module Sheets (completely independent)
 var DP_REGISTRATION_SHEET = 'DP_Registration_Res';
@@ -24,11 +24,22 @@ var DP_FINANCIAL_LEDGER_SHEET = 'Direct_Financial_Ledger';
 var DP_ADJUSTMENT_SHEET = 'Direct_Adjustment_Records';
 var DP_LEDGER_SHEET = 'Direct_Financial_Ledger';
 var DP_AUDIT_LOGS_SHEET = 'Direct_System_Audit_Logs';
-var DP_FORM_RESPONSES_4 = 'Form Responses 4';
-var DP_FORM_RESPONSES_5 = 'Form Responses 5';
+var DP_FORM_RESPONSES_4 = 'dp_new_joine';
+var DP_FORM_RESPONSES_5 = 'dp_new_bgv';
 
 // ============================================================
 // ENTRY POINTS
+
+// [CHANGED] Added getSheetSafe to ensure every getSheetByName logs if not found
+function getSheetSafe(ss, sheetName) {
+  Logger.log("Reading sheet: " + sheetName);
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    Logger.log("Sheet not found: " + sheetName);
+  }
+  return sheet;
+}
+
 // ============================================================
 
 function doGet(e) {
@@ -193,7 +204,7 @@ function doPost(e) {
         var dateColKeywords = ['createdat', 'registrationdate', 'dateofjoining', 'bgvsubmitteddate', 'submittedat', 'bgvsubmittedat', 'paymentdate', 'timestamp', 'paymentperiod'];
 
         for (var i = 0; i < sheetNames.length; i++) {
-          var sheet = ss.getSheetByName(sheetNames[i]);
+          var sheet = getSheetSafe(ss, sheetNames[i]);
           if (sheet) {
             var rangeData = sheet.getDataRange().getValues();
             if (rangeData.length > 0 && selectedMonth) {
@@ -332,7 +343,7 @@ function doPost(e) {
     if (action === 'appendBGV') {
       try {
         var ss = SpreadsheetApp.getActiveSpreadsheet();
-        var bgvSheet = ss.getSheetByName(BGV_RESPONSES_SHEET);
+        var bgvSheet = getSheetSafe(ss, BGV_RESPONSES_SHEET);
         var values = JSON.parse(params.values || '{}');
         var headers = getSheetHeaders(bgvSheet);
         
@@ -449,7 +460,7 @@ function doPost(e) {
         }
 
         var ss = SpreadsheetApp.getActiveSpreadsheet();
-        var masterSheet = ss.getSheetByName(MASTER_SHEET_NAME);
+        var masterSheet = getSheetSafe(ss, MASTER_SHEET_NAME);
         if (!masterSheet) {
           return ContentService.createTextOutput(JSON.stringify({ success: false, error: 'Master_Candidates sheet not found' })).setMimeType(ContentService.MimeType.JSON);
         }
@@ -668,7 +679,7 @@ function doPost(e) {
         var ss = SpreadsheetApp.getActiveSpreadsheet();
 
         // ── 0. Validate candidateId in Master_Candidates ──
-        var masterSheet = ss.getSheetByName(MASTER_SHEET_NAME);
+        var masterSheet = getSheetSafe(ss, MASTER_SHEET_NAME);
         if (!masterSheet) {
           return ContentService.createTextOutput(JSON.stringify({ success: false, error: 'Master_Candidates sheet not found' })).setMimeType(ContentService.MimeType.JSON);
         }
@@ -775,7 +786,7 @@ function doPost(e) {
         }
 
         var ss = SpreadsheetApp.getActiveSpreadsheet();
-        var paymentSheet = ss.getSheetByName(PAYMENT_RECORDS_SHEET);
+        var paymentSheet = getSheetSafe(ss, PAYMENT_RECORDS_SHEET);
         if (!paymentSheet) {
           return ContentService.createTextOutput(JSON.stringify({ success: false, error: 'Payment_Records sheet not found' })).setMimeType(ContentService.MimeType.JSON);
         }
@@ -918,28 +929,32 @@ function onFormSubmit(e) {
   try {
     Logger.log("onFormSubmit Triggered");
 
-    if (!e || !e.range) return;
+    if (!e || !e.range) {
+      Logger.log("Missing event object or range. Exiting.");
+      return;
+    }
 
+    var namedValues = e.namedValues || {};
     var sheetName = e.range.getSheet().getName();
-    var normalizedSheetName = sheetName.replace(/_/g, ' ').trim().toLowerCase();
+    var rawSheetName = sheetName;
+    var isBgvForm = false;
 
-    // 1. Check for Direct Placement Form Responses 4
-    if (normalizedSheetName === "form responses 4") {
-      Logger.log("Detected Direct Placement Form Responses 4");
+    // 1. Check for Direct Placement Form
+    if (rawSheetName === DP_FORM_RESPONSES_4 || rawSheetName === 'dp_new_joine') {
+      Logger.log("Detected Direct Placement Form: " + rawSheetName);
       syncDirectPlacement(e);
       return;
     }
 
-    // 2. Check for Direct Placement BGV Form Responses 5
-    if (normalizedSheetName === "form responses 5") {
-      Logger.log("Detected Direct Placement BGV Form Responses 5");
+    // 2. Check for Direct Placement BGV Form
+    if (rawSheetName === DP_FORM_RESPONSES_5 || rawSheetName === 'dp_new_bgv') {
+      Logger.log("Detected Direct Placement BGV Form: " + rawSheetName);
       syncDirectBGV(e);
       return;
     }
 
-    // Existing Training CRM Logic matches
-    var rawSheetName = sheetName;
-    if (rawSheetName === BGV_RESPONSES_SHEET || rawSheetName === 'BGV_Responses') {
+    // 3. Existing Training CRM Logic
+    if (rawSheetName === BGV_RESPONSES_SHEET || rawSheetName === 'new_joine_bgv') {
       isBgvForm = true;
     } else {
       var bgvKeys = ["How much amount paid for document?", "Father's name", "Alternate contact number", "Course name", "Batch"];
@@ -970,7 +985,7 @@ function onFormSubmit(e) {
       var b_submittedAt = findValue(namedValues, "Timestamp") || findValue(namedValues, "submittedAt") || new Date().toISOString();
       
       var ss = SpreadsheetApp.getActiveSpreadsheet();
-      var bgvSheet = ss.getSheetByName(BGV_RESPONSES_SHEET);
+      var bgvSheet = getSheetSafe(ss, BGV_RESPONSES_SHEET);
       if (bgvSheet) {
         var bgvHeaders = getSheetHeaders(bgvSheet);
         var bgvRow = buildRowByHeaders(bgvHeaders, {
@@ -1021,7 +1036,7 @@ function onFormSubmit(e) {
     Logger.log("Mode Found = " + mode);
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var regSheet = ss.getSheetByName(REGISTRATION_SHEET);
+    var regSheet = getSheetSafe(ss, REGISTRATION_SHEET);
     if (!regSheet) {
       Logger.log("ERROR: Registration_Responses sheet not found");
       return;
@@ -1070,9 +1085,10 @@ function onFormSubmit(e) {
 // ============================================================
 
 function syncMasterCandidates() {
+  Logger.log("syncMasterCandidates called");
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var regSheet = ss.getSheetByName(REGISTRATION_SHEET);
-  var masterSheet = ss.getSheetByName(MASTER_SHEET_NAME);
+  var regSheet = getSheetSafe(ss, REGISTRATION_SHEET);
+  var masterSheet = getSheetSafe(ss, MASTER_SHEET_NAME);
 
   if (!regSheet || !masterSheet) {
     Logger.log("syncMaster ERROR: Required sheets not found");
@@ -1224,7 +1240,7 @@ function syncMasterCandidates() {
 
 function getCandidates() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(MASTER_SHEET_NAME);
+  var sheet = getSheetSafe(ss, MASTER_SHEET_NAME);
   if (!sheet) return [];
 
   var data = sheet.getDataRange().getValues();
@@ -1289,7 +1305,7 @@ function getDashboardMetrics() {
   var paymentsReceived = 0; // Sum of Financial_Ledger.paidToDate
   var pendingDues = 0;      // Sum of Financial_Ledger.pendingDues
 
-  var paymentSheet = ss.getSheetByName(PAYMENT_RECORDS_SHEET);
+  var paymentSheet = getSheetSafe(ss, PAYMENT_RECORDS_SHEET);
   if (paymentSheet) {
     var payData = paymentSheet.getDataRange().getValues();
     if (payData.length > 1) {
@@ -1307,7 +1323,7 @@ function getDashboardMetrics() {
     }
   }
 
-  var ledgerSheet = ss.getSheetByName(FINANCIAL_LEDGER_SHEET);
+  var ledgerSheet = getSheetSafe(ss, FINANCIAL_LEDGER_SHEET);
   if (ledgerSheet) {
     var ledgerData = ledgerSheet.getDataRange().getValues();
     if (ledgerData.length > 1) {
@@ -1374,7 +1390,7 @@ function exportAllData() {
 
 function getPayments(filterCandidateId) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var paymentSheet = ss.getSheetByName(PAYMENT_RECORDS_SHEET);
+  var paymentSheet = getSheetSafe(ss, PAYMENT_RECORDS_SHEET);
   if (!paymentSheet) {
     return { success: true, payments: [], timestamp: new Date().toISOString() };
   }
@@ -1415,7 +1431,7 @@ function upsertFinancialLedger(ss, candidateId, candidateName, pipelineType, pip
   Logger.log('upsertFinancialLedger START: candidateId=' + candidateId + ' pipelineType=' + pipelineType + ' pipelineLabel=' + pipelineLabel);
 
   // ── Sum all payments for this candidate + pipeline ──────────
-  var paymentSheet = ss.getSheetByName(PAYMENT_RECORDS_SHEET);
+  var paymentSheet = getSheetSafe(ss, PAYMENT_RECORDS_SHEET);
   var totalPaid = 0;
   if (paymentSheet) {
     var payData = paymentSheet.getDataRange().getValues();
@@ -1587,7 +1603,7 @@ function ensureSheetWithColumns(ss, sheetName, requiredColumns) {
  */
 function getFinancials(filterCandidateId) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var ledgerSheet = ss.getSheetByName(FINANCIAL_LEDGER_SHEET);
+  var ledgerSheet = getSheetSafe(ss, FINANCIAL_LEDGER_SHEET);
   if (!ledgerSheet) {
     return { success: true, financials: [], timestamp: new Date().toISOString() };
   }
@@ -1650,7 +1666,7 @@ function logAuditToSheet(ss, candidateId, candidateName, actionType, oldValue, n
 
 function getAuditLogs(filterCandidateId) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var auditSheet = ss.getSheetByName(SYSTEM_AUDIT_LOGS_SHEET);
+  var auditSheet = getSheetSafe(ss, SYSTEM_AUDIT_LOGS_SHEET);
   if (!auditSheet) {
     return { success: true, logs: [], timestamp: new Date().toISOString() };
   }
@@ -1763,7 +1779,7 @@ function normalizePhone(val) {
 
 function rebuildFinancialLedger() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var paymentSheet = ss.getSheetByName(PAYMENT_RECORDS_SHEET);
+  var paymentSheet = getSheetSafe(ss, PAYMENT_RECORDS_SHEET);
   
   if (!paymentSheet) {
     Logger.log('rebuildFinancialLedger: Payment_Records sheet not found.');
@@ -1797,7 +1813,7 @@ function rebuildFinancialLedger() {
 
   // ── 1. Build Master_Candidates name lookup ──
   var masterNameMap = {}; // { candidateId: 'Full Name' }
-  var masterSheet = ss.getSheetByName(MASTER_SHEET_NAME);
+  var masterSheet = getSheetSafe(ss, MASTER_SHEET_NAME);
   if (masterSheet) {
     var masterData = masterSheet.getDataRange().getValues();
     if (masterData.length > 1) {
@@ -1992,8 +2008,8 @@ function rebuildFinancialLedger() {
 
 function fixOldData() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var rawSheet = ss.getSheetByName(FORM_SOURCE_SHEET);
-  var regSheet = ss.getSheetByName(REGISTRATION_SHEET);
+  var rawSheet = getSheetSafe(ss, FORM_SOURCE_SHEET);
+  var regSheet = getSheetSafe(ss, REGISTRATION_SHEET);
 
   if (!rawSheet || !regSheet) {
     Logger.log("fixOldData: Could not find required sheets.");
@@ -2071,9 +2087,6 @@ function normalizeBgvHeader(h) {
     .replace(/[\s_\-\r\n]/g, '');
 }
 
-function normalizePhone(p) {
-  return String(p || "").replace(/\D/g, "").slice(-10);
-}
 
 function syncBgvResponses(e) {
   Logger.log("BGV submission received");
@@ -2085,7 +2098,7 @@ function syncBgvResponses(e) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     Logger.log("Reading BGV_Responses");
-    var bgvSheet = ss.getSheetByName(BGV_RESPONSES_SHEET);
+    var bgvSheet = getSheetSafe(ss, BGV_RESPONSES_SHEET);
     if (!bgvSheet) {
       return { success: false, error: 'Missing BGV response sheet' };
     }
@@ -2094,7 +2107,7 @@ function syncBgvResponses(e) {
     if (bgvData.length < 2) return { success: true, message: 'No data' };
 
     Logger.log("Searching Master_Candidates");
-    var masterSheet = ss.getSheetByName(MASTER_SHEET_NAME);
+    var masterSheet = getSheetSafe(ss, MASTER_SHEET_NAME);
     if (!masterSheet) return { success: false, error: 'Missing master sheet' };
     
     // Ensure required columns
@@ -2243,7 +2256,7 @@ function syncBgvResponses(e) {
         if (bDocAmt > 0) {
           var matchedCandId = candIdIdx !== -1 ? String(masterData[targetRow][candIdIdx]) : 'Cand_' + targetRow;
           var matchedCandName = fullNameIdx !== -1 ? String(masterData[targetRow][fullNameIdx]) : String(bName);
-          var paymentSheet = ss.getSheetByName(PAYMENT_RECORDS_SHEET);
+          var paymentSheet = getSheetSafe(ss, PAYMENT_RECORDS_SHEET);
           if (paymentSheet) {
             var pData = paymentSheet.getDataRange().getValues();
             var pHeaders = pData.length > 0 ? pData[0].map(function(h) { return String(h).trim(); }) : [];
@@ -2304,7 +2317,7 @@ function syncBgvResponses(e) {
 
 function generatePlacementId() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(DP_MASTER_SHEET);
+  var sheet = getSheetSafe(ss, DP_MASTER_SHEET);
   if (!sheet) return 'DP001';
   var data = sheet.getDataRange().getValues();
   if (data.length < 2) return 'DP001';
@@ -2337,7 +2350,7 @@ function generatePlacementId() {
 function getDirectPlacementCandidates(params) {
   params = params || {};
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(DP_MASTER_SHEET);
+  var sheet = getSheetSafe(ss, DP_MASTER_SHEET);
   if (!sheet) return [];
   
   var data = sheet.getDataRange().getValues();
@@ -2392,7 +2405,7 @@ function getDirectPlacementCandidates(params) {
 
 function getDirectPlacementCandidate(placementId) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(DP_MASTER_SHEET);
+  var sheet = getSheetSafe(ss, DP_MASTER_SHEET);
   if (!sheet) return { success: false, error: 'Sheet not found' };
   
   var data = sheet.getDataRange().getValues();
@@ -2477,9 +2490,9 @@ function syncDirectPlacement() {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     
-    var dpFormSheet = ss.getSheetByName(DP_FORM_RESPONSES_4) || ss.getSheetByName('Form_Responses4');
+    var dpFormSheet = getSheetSafe(ss, DP_FORM_RESPONSES_4);
     if (!dpFormSheet) {
-      Logger.log("Direct Placement Registration Form sheet not found (tried 'Form Responses 4' and 'Form_Responses4').");
+      Logger.log("Direct Placement Registration Form sheet not found (" + DP_FORM_RESPONSES_4 + ").");
       return { success: false, error: "Direct Placement Form sheet not found." };
     }
     
@@ -2504,7 +2517,7 @@ function syncDirectPlacement() {
     
     Logger.log("Detecting master sheet: " + DP_MASTER_SHEET);
     var masterCols = ['placementId', 'fullName', 'mobileNumber', 'yearOfPassing', 'currentlyWorking', 'experienceType', 'companyName', 'designation', 'ctc', 'amountPaid', 'offerLetter', 'offerLetterUrl', 'relievingLetter', 'relievingLetterUrl', 'pfServiceHistory', 'pfServiceHistoryUrl', 'payslip', 'payslipUrl', 'bgvStatus', 'dateOfBirth', 'fatherName', 'alternateContact', 'address', 'pincode', 'courseName', 'batch', 'documentAmount', 'bgvSubmittedAt', 'candidateStatus', 'trackedStatus', 'trackedAt', 'createdAt', 'updatedAt', 'remarks'];
-    var dpMasterSheet = ss.getSheetByName(DP_MASTER_SHEET);
+    var dpMasterSheet = getSheetSafe(ss, DP_MASTER_SHEET);
 
     if (!dpMasterSheet) {
       dpMasterSheet = ss.insertSheet(DP_MASTER_SHEET);
@@ -2567,7 +2580,7 @@ function syncDirectPlacement() {
         var companyObj = getVal(['CompanyName', 'Company', 'Organization', 'CurrentCompany']);
         var desigObj = getVal(['Designation', 'Role', 'Title', 'JobTitle', 'CurrentDesignation']);
         var ctcObj = getVal(['CTC', 'CurrentCTC', 'Salary']);
-        var amountPaidObj = getVal(['AmountPaid', 'Amount', 'PaidAmount']);
+        var amountPaidObj = ''; // HR adds payments manually
         var offerObj = getVal(['OfferLetter', 'Offer']);
         var relievingObj = getVal(['RelievingLetter', 'Relieving']);
         var pfObj = getVal(['PFServiceHistory', 'PF', 'ServiceHistory']);
@@ -2726,7 +2739,7 @@ function syncDirectPlacement() {
 function getDirectPlacementPayments(placementId) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(DP_PAYMENT_SHEET);
+    var sheet = getSheetSafe(ss, DP_PAYMENT_SHEET);
     if (!sheet) return { success: true, payments: [] };
     
     var data = sheet.getDataRange().getValues();
@@ -2750,7 +2763,7 @@ function getDirectPlacementPayments(placementId) {
 function getDirectPlacementFinancials(placementId) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(DP_FINANCIAL_LEDGER_SHEET);
+    var sheet = getSheetSafe(ss, DP_FINANCIAL_LEDGER_SHEET);
     if (!sheet) return { success: true, financials: [] };
     
     var data = sheet.getDataRange().getValues();
@@ -2786,7 +2799,7 @@ function updateDirectCandidate(params) {
     var updates = JSON.parse(params.updates || '{}');
     
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(DP_MASTER_SHEET);
+    var sheet = getSheetSafe(ss, DP_MASTER_SHEET);
     if (!sheet) return { success: false, error: 'DP_MASTER_SHEET not found' };
     
     var data = sheet.getDataRange().getValues();
@@ -2845,6 +2858,7 @@ function updatePaymentStatus(pending, paid) {
 
 function addDirectPayment(params) {
   try {
+    Logger.log("addDirectPayment initiated for placementId: " + params.placementId);
     var placementId = params.placementId || '';
     var candidateName = params.candidateName || '';
     var amount = parseFloat(params.amount) || 0;
@@ -2890,7 +2904,7 @@ function updateDirectPayment(params) {
     var paymentId = params.paymentId || '';
     var updates = JSON.parse(params.updates || '{}');
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(DP_PAYMENT_SHEET);
+    var sheet = getSheetSafe(ss, DP_PAYMENT_SHEET);
     if (!sheet) return { success: false, error: 'DP_PAYMENT_SHEET not found' };
     
     var data = sheet.getDataRange().getValues();
@@ -2936,7 +2950,7 @@ function deleteDirectPayment(params) {
   try {
     var paymentId = params.paymentId || '';
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(DP_PAYMENT_SHEET);
+    var sheet = getSheetSafe(ss, DP_PAYMENT_SHEET);
     if (!sheet) return { success: false, error: 'DP_PAYMENT_SHEET not found' };
     
     var data = sheet.getDataRange().getValues();
@@ -3065,7 +3079,7 @@ function uploadDPDocument(params) {
     var fileId = file.getId();
     
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var dpMasterSheet = ss.getSheetByName(DP_MASTER_SHEET);
+    var dpMasterSheet = getSheetSafe(ss, DP_MASTER_SHEET);
     if (!dpMasterSheet) throw new Error("DP Master Sheet not found");
     
     var data = dpMasterSheet.getDataRange().getValues();
@@ -3117,7 +3131,7 @@ function updateDPDocumentStatus(params) {
     }
     
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var dpMasterSheet = ss.getSheetByName(DP_MASTER_SHEET);
+    var dpMasterSheet = getSheetSafe(ss, DP_MASTER_SHEET);
     if (!dpMasterSheet) throw new Error("DP Master Sheet not found");
     
     var data = dpMasterSheet.getDataRange().getValues();
@@ -3168,7 +3182,7 @@ function deleteDPDocument(params) {
     var performedBy = params.performedBy || 'Python HR';
     
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var dpMasterSheet = ss.getSheetByName(DP_MASTER_SHEET);
+    var dpMasterSheet = getSheetSafe(ss, DP_MASTER_SHEET);
     if (!dpMasterSheet) throw new Error("DP Master Sheet not found");
     
     var data = dpMasterSheet.getDataRange().getValues();
@@ -3308,7 +3322,7 @@ function processDirectBgvRow_(e, ss, namedValues, rawRowIndex, rawSheetName) {
     var normBName = String(bName).trim().toLowerCase().replace(/\s+/g, ' ');
 
     // 3. Match Existing Direct Placement Candidate
-    var mSheet = ss.getSheetByName(DP_MASTER_SHEET);
+    var mSheet = getSheetSafe(ss, DP_MASTER_SHEET);
     if (!mSheet) return { success: false, error: 'Direct_Placement_Master sheet not found' };
     
     var mData = mSheet.getDataRange().getValues();
@@ -3487,58 +3501,8 @@ function processDirectBgvRow_(e, ss, namedValues, rawRowIndex, rawSheetName) {
       var regAmtIdx = findHeaderCol(headerRow, 'registrationAmount');
       var totalPaidIdx = findHeaderCol(headerRow, 'totalPaid');
       
-      if (docPaidIdx !== -1) {
-        setByHeader(mSheet, headerRow, matchedRowIdx + 1, 'documentAmountPaid', bDocAmt);
-        if (regAmtIdx !== -1 && totalPaidIdx !== -1) {
-          var regAmt = parseFloat(String(mData[matchedRowIdx][regAmtIdx])) || 0;
-          var newTotalPaid = regAmt + bDocAmt;
-          setByHeader(mSheet, headerRow, matchedRowIdx + 1, 'totalPaid', newTotalPaid);
-        }
-      }
-      
       if (existingBgvRowIdx === -1) {
         logDirectAudit(ss, matchedPlacementId, matchedFullName, 'BGV', 'BGV_SUBMITTED', 'Direct Placement BGV Form Submitted', previousBgvStatus, 'SUBMITTED', 'System');
-        
-        // 6. Handle Document Payment to Payment Records and Ledger
-        if (bDocAmt > 0) {
-          var pSheet = ensureSheetWithColumns(ss, DP_PAYMENT_SHEET, ['id', 'placementId', 'candidateName', 'paymentType', 'pipelineType', 'amount', 'paymentDate', 'transactionRef', 'notes', 'remarks', 'userStamp', 'timestamp']);
-          var syncKey = "BGV_DP_" + matchedPlacementId + "_ROW_" + rawRowIndex;
-          
-          var pData = pSheet.getDataRange().getValues();
-          var pHeaders = pData[0].map(function(h) { return String(h).trim(); });
-          var pNotesIdx = findHeaderCol(pHeaders, 'notes');
-          var duplicatePaymentFound = false;
-          
-          if (pData.length > 1) {
-            for (var p = 1; p < pData.length; p++) {
-              if (String(pData[p][pNotesIdx]).indexOf(syncKey) !== -1) {
-                duplicatePaymentFound = true;
-                break;
-              }
-            }
-          }
-          
-          if (!duplicatePaymentFound) {
-            var pRow = buildRowByHeaders(pHeaders, {
-              'id': 'pay_' + new Date().getTime(),
-              'placementId': matchedPlacementId,
-              'candidateName': matchedFullName,
-              'paymentType': 'Document Fee',
-              'pipelineType': 'document',
-              'amount': bDocAmt,
-              'paymentDate': submittedAt,
-              'transactionRef': '',
-              'notes': "BGV Form Document Payment. " + syncKey,
-              'remarks': "BGV Sync",
-              'userStamp': "System",
-              'timestamp': new Date().toISOString()
-            });
-            pSheet.appendRow(pRow);
-            
-            logDirectAudit(ss, matchedPlacementId, matchedFullName, 'FINANCE', 'PAYMENT_ADDED', 'Document Payment Added Rs.' + bDocAmt, '', '', 'System');
-            upsertDirectFinancialLedger(ss, matchedPlacementId, matchedFullName, 'document');
-          }
-        }
       }
     }
     
@@ -3558,9 +3522,9 @@ function syncDirectBGV(e) {
       return processDirectBgvRow_(e, ss, e.namedValues, e.range ? e.range.getRow() : new Date().getTime(), e.range ? e.range.getSheet().getName() : 'raw');
     } else {
       Logger.log("syncDirectBGV: Running in Manual Sync Bulk Mode");
-      var bgvSheet = ss.getSheetByName(DP_FORM_RESPONSES_5) || ss.getSheetByName('Form_Responses5');
+      var bgvSheet = getSheetSafe(ss, DP_FORM_RESPONSES_5);
       if (!bgvSheet) {
-        Logger.log("Direct Placement BGV Form sheet not found (tried 'Form Responses 5' and 'Form_Responses5').");
+        Logger.log("Direct Placement BGV Form sheet not found (" + DP_FORM_RESPONSES_5 + ").");
         return { success: false, error: "Direct Placement BGV Form sheet not found." };
       }
       
@@ -3741,7 +3705,7 @@ function getDirectAuditLogs(params) {
     var placementId = params.placementId || '';
     
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var auditSheet = ss.getSheetByName(DP_AUDIT_LOGS_SHEET);
+    var auditSheet = getSheetSafe(ss, DP_AUDIT_LOGS_SHEET);
     if (!auditSheet) return { success: true, auditLogs: [] };
     
     var data = auditSheet.getDataRange().getValues();
@@ -3780,7 +3744,7 @@ function getDirectAuditLogs(params) {
 function logDirectAudit(ss, placementId, candidateName, module, action, description, oldValue, newValue, performedBy) {
   try {
     var sheetCols = ['auditId', 'placementId', 'candidateName', 'module', 'action', 'description', 'oldValue', 'newValue', 'performedBy', 'timestamp'];
-    var sheet = ss.getSheetByName(DP_AUDIT_LOGS_SHEET);
+    var sheet = getSheetSafe(ss, DP_AUDIT_LOGS_SHEET);
     if (!sheet) {
       sheet = ss.insertSheet(DP_AUDIT_LOGS_SHEET);
     }
@@ -3818,7 +3782,7 @@ function generateDirectAdjustmentId_() {
 function getDirectAdjustments(placementId) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(DP_ADJUSTMENT_SHEET);
+    var sheet = getSheetSafe(ss, DP_ADJUSTMENT_SHEET);
     if (!sheet) return { success: true, adjustments: [] };
     
     var data = sheet.getDataRange().getValues();
@@ -3863,7 +3827,7 @@ function addDirectAdjustment(params) {
     if (amount <= 0) throw new Error("amount must be > 0");
     
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(DP_ADJUSTMENT_SHEET);
+    var sheet = getSheetSafe(ss, DP_ADJUSTMENT_SHEET);
     if (!sheet) {
       sheet = ss.insertSheet(DP_ADJUSTMENT_SHEET);
     }
@@ -3959,7 +3923,7 @@ function updateDirectAdjustment(params) {
     
     var updates = JSON.parse(params.updates || '{}');
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(DP_ADJUSTMENT_SHEET);
+    var sheet = getSheetSafe(ss, DP_ADJUSTMENT_SHEET);
     if (!sheet) throw new Error("Sheet not found");
     
     var data = sheet.getDataRange().getValues();
@@ -4036,7 +4000,7 @@ function deleteDirectAdjustment(params) {
     if (!adjustmentId || !placementId) throw new Error("adjustmentId and placementId required");
     
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(DP_ADJUSTMENT_SHEET);
+    var sheet = getSheetSafe(ss, DP_ADJUSTMENT_SHEET);
     if (!sheet) throw new Error("Sheet not found");
     
     var data = sheet.getDataRange().getValues();
@@ -4141,7 +4105,7 @@ function upsertDirectFinancialLedger(ss, placementId, candidateName, pipelineTyp
   var finalBaseFee = hasExplicitBaseFee ? parseSafeDirectAmount_(explicitBaseFee) : existingBaseFee;
   
   // Collect matching payments
-  var pSheet = ss.getSheetByName(DP_PAYMENT_SHEET);
+  var pSheet = getSheetSafe(ss, DP_PAYMENT_SHEET);
   var matchingPayments = [];
   if (pSheet) {
     var pData = pSheet.getDataRange().getValues();
@@ -4166,7 +4130,7 @@ function upsertDirectFinancialLedger(ss, placementId, candidateName, pipelineTyp
   }
   
   // Collect matching adjustments
-  var aSheet = ss.getSheetByName(DP_ADJUSTMENT_SHEET);
+  var aSheet = getSheetSafe(ss, DP_ADJUSTMENT_SHEET);
   var matchingAdjustments = [];
   if (aSheet) {
     var aData = aSheet.getDataRange().getValues();
